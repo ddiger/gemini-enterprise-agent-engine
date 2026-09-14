@@ -1,115 +1,45 @@
 # Mortgage Assistant Agent
 
-ADK mortgage assistant agent deployed to Agent Runtime. Connects to
-legacy DMS, income verification, and corporate email MCP servers running in GKE
-via PSC Interface.
+ADK mortgage assistant agent deployed to **Vertex AI Agent Runtime (Reasoning Engine)** powered by **Gemini 3.8 Flash**. Connects to legacy DMS, income verification, and corporate email FastMCP servers via **Agent Gateway** with **Agent Identity (SPIFFE mTLS + DPoP)**.
 
 ## Prerequisites
 
-- Terraform infrastructure deployed (VPC, GKE, PSC Interface, DNS zones)
-- MCP servers deployed to GKE and reachable via the internal gateway
-- `uv` installed for Python dependency management
+- Terraform infrastructure deployed (VPC, Agent Gateway, Model Armor, Agent Registry)
+- FastMCP servers deployed to Cloud Run
+- `uv` installed for Python dependency management (Python >= 3.12)
 
 ## Deploy
 
-### Get values from Terraform
-
-From the `terraform/` directory, retrieve the required outputs:
-
 ```bash
-cd ../../terraform
-
-export PROJECT_ID=$(terraform output -raw foundation_project_id)
-export VPC_NAME=$(terraform output -raw vpc_name)
-export PSC_ATTACHMENT=$(terraform output -raw psc_interface_network_attachment_id)
-export DNS_PEERING_DOMAIN=$(terraform output -raw psc_interface_dns_peering_domain)
-```
-
-### Create a new agent
-
-```bash
-cd ../src/mortgage-agent
+cd src/mortgage-agent
+uv sync
 
 uv run python deploy_agent.py \
-  --project=$PROJECT_ID \
-  --dms-mcp-url=https://dms.${DNS_PEERING_DOMAIN%%.}/mcp \
-  --income-verification-url=https://income-verification.${DNS_PEERING_DOMAIN%%.} \
-  --email-mcp-url=https://email.${DNS_PEERING_DOMAIN%%.}/mcp \
-  --network-attachment=$PSC_ATTACHMENT \
-  --dns-peering-domain=$DNS_PEERING_DOMAIN \
-  --dns-peering-target-project=$PROJECT_ID \
-  --dns-peering-target-network=$VPC_NAME \
-  --enable-agent-identity
-```
-
-### Update an existing agent
-
-```bash
-uv run python deploy_agent.py \
-  --project=$PROJECT_ID \
-  --dms-mcp-url=https://dms.${DNS_PEERING_DOMAIN%%.}/mcp \
-  --income-verification-url=https://income-verification.${DNS_PEERING_DOMAIN%%.} \
-  --email-mcp-url=https://email.${DNS_PEERING_DOMAIN%%.}/mcp \
-  --network-attachment=$PSC_ATTACHMENT \
-  --dns-peering-domain=$DNS_PEERING_DOMAIN \
-  --dns-peering-target-project=$PROJECT_ID \
-  --dns-peering-target-network=$VPC_NAME \
+  --project=${PROJECT_ID} \
+  --region=${REGION} \
+  --model=gemini-3.8-flash \
   --enable-agent-identity \
-  --update=projects/PROJECT_NUMBER/locations/us-central1/reasoningEngines/ENGINE_ID
-```
-
-### Register in Gemini Enterprise
-
-Add `--ge-deploy` with the required OAuth and Gemini Enterprise flags:
-
-```bash
-export OAUTH_CLIENT_SECRET=<your-oauth-client-secret>
-
-uv run python deploy_agent.py \
-  --project=$PROJECT_ID \
-  --dms-mcp-url=https://dms.${DNS_PEERING_DOMAIN%%.}/mcp \
-  --income-verification-url=https://income-verification.${DNS_PEERING_DOMAIN%%.} \
-  --email-mcp-url=https://email.${DNS_PEERING_DOMAIN%%.}/mcp \
-  --network-attachment=$PSC_ATTACHMENT \
-  --dns-peering-domain=$DNS_PEERING_DOMAIN \
-  --dns-peering-target-project=$PROJECT_ID \
-  --dns-peering-target-network=$VPC_NAME \
-  --enable-agent-identity \
-  --ge-deploy \
-  --app-id=<gemini-enterprise-engine-id> \
-  --oauth-client-id=<oauth-client-id>
+  --agent-name=mortgage-agent \
+  --agent-gateway=projects/${PROJECT_ID}/locations/${REGION}/agentGateways/agent-gateway \
+  --mcp-invoker-sa=$(terraform -chdir=../../terraform output -raw agent_mcp_invoker_email) \
+  --staging-bucket=gs://${PROJECT_ID}-staging \
+  --model-endpoint-location=global
 ```
 
 ## Architecture
 
 ```
-Agent Runtime (Reasoning Engine)
-  |
-  |-- PSC Interface NIC (10.11.0.0/28 subnet)
-  |     |
-  |     |-- DNS Peering → inference-vpc → internal DNS zone
-  |     |
-  |     └── TCP/443 → Internal Gateway (10.0.0.2)
-  |                       |
-  |                       ├── dms.internal.demo.sc-ccn.xyz
-  |                       ├── income-verification.internal.demo.sc-ccn.xyz
-  |                       └── corporate-email.internal.demo.sc-ccn.xyz
-  |
-  └── Agent Platform APIs (Gemini models, session management)
-```
-
-## Terraform Outputs Reference
-
-| Output | Description | deploy_agent.py flag |
-|--------|-------------|---------------------|
-| `foundation_project_id` | GCP project ID | `--project` |
-| `vpc_name` | VPC network name | `--dns-peering-target-network` |
-| `psc_interface_network_attachment_id` | PSC Interface network attachment | `--network-attachment` |
-| `psc_interface_dns_peering_domain` | DNS domain for peering | `--dns-peering-domain` |
-
-## Local Testing
-
-```bash
-uv sync
-adk web
+[Agent Runtime (Gemini 3.8 Flash on ADK)]
+       |
+       |-- Egress: SPIFFE ID X.509 mTLS + DPoP JWT Token
+       v
+[Agent Gateway (Managed Envoy Proxy)]
+       |
+       |-- Model Armor CONTENT_AUTHZ (Prompt Injection Filter)
+       |-- IAP REQUEST_AUTHZ (CEL Condition: ReadOnlyToolsOnly)
+       |-- Private Service Connect NAT Subnet (10.20.0.0/28)
+       |
+       +---> legacy-dms (search_documents) [200 OK]
+       +---> income-verification (verify_applicant) [DLP SSN Redacted]
+       +---> corporate-email (send_email) [403 Forbidden Blocked]
 ```

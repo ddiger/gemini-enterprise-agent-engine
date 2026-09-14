@@ -665,7 +665,7 @@ def main() -> None:
             )
             if os.path.exists(script_path):
                 try:
-                    subprocess.run([script_path, "--agent-id", agent_id], env=env, check=True)
+                    subprocess.run([script_path, "--endpoints", "--agent-id", agent_id], env=env, check=True)
                     print("Direct egress IAM permissions successfully applied!")
                 except Exception as e:
                     print(f"Error executing grant_agent_mcp_egress.sh: {e}")
