@@ -1,8 +1,6 @@
 # Gemini Enterprise Agent Engine: Enterprise Architecture & End-to-End Governance
 
-[![Architecture: Level 300/400](https://img.shields.io/badge/Architecture-Level_300%2F400-blue.svg)](#architecture-pillars)
-[![Platform: Google Cloud](https://img.shields.io/badge/Platform-Google_Cloud-4285F4.svg)](https://cloud.google.com)
-[![Status: Production Ready](https://img.shields.io/badge/Status-Validated-success.svg)](#verification)
+[English](README.md) | [한국어](README.ko.md)
 
 Enterprise architecture and end-to-end testable implementation of **Gemini Enterprise Agent Engine**, demonstrating Zero Trust governance across its four foundational pillars:
 
