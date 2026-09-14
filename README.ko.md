@@ -2,56 +2,115 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-**Gemini Enterprise Agent Engine**의 4대 핵심 컴포넌트를 관통하는 엔터프라이즈 제로 트러스트(Zero Trust) 아키텍처 사양 및 실행 가능한 엔드투엔드(End-to-End) 테스트 구현체입니다.
+**Gemini Enterprise Agent Engine**의 4대 핵심 컴포넌트를 관통하는 엔터프라이즈 제로 트러스트(Zero Trust) 거버넌스 아키텍처 사양 및 실행 가능한 엔드투엔드(End-to-End) 테스트 구현체입니다.
 
-1. **Agent Endpoint (인그레스 진입점)**: 클라이언트 애플리케이션 및 사용자를 위한 통합 API 인그레스 및 소비 계층.
+1. **Agent Endpoint (인그레스 진입점)**: 클라이언트 애플리케이션 및 엔터프라이즈 사용자를 위한 통합 인그레스 API 게이트웨이 및 소비 계층.
 2. **Agent Gateway (데이터 평면 / 이그레스 게이트웨이)**: 도구(MCP) 호출 이그레스 트래픽 제어, Private Service Connect (PSC), Envoy 기반 Service Extensions 인터셉터를 제공하는 완전관리형 프록시.
 3. **Agent Identity (신원 관리 평면)**: Workload Identity Federation, SPIFFE ID, 단기 DPoP 토큰 교환을 통한 위변조 불가 에이전트 암호학적 신원 증명.
 4. **Agent Policy (제어 및 거버넌스 평면)**: IAM CEL(Common Expression Language), IAP Request Authorization, Cloud DLP 비식별화, Model Armor(프롬프트 인젝션 방어)를 결합한 다계층 보안 정책.
 
 ---
 
-## 🏛 아키텍처 개요 (Architecture Overview)
+## 🏛 아키텍처 토폴로지 (Architecture Topology)
 
+```mermaid
+flowchart TD
+    classDef client fill:#E8F0FE,stroke:#1A73E8,stroke-width:2px,color:#1A73E8;
+    classDef ingress fill:#F1F3F4,stroke:#5F6368,stroke-width:2px,color:#202124;
+    classDef runtime fill:#E6F4EA,stroke:#137333,stroke-width:2px,color:#137333;
+    classDef gateway fill:#FEF7E0,stroke:#F29900,stroke-width:2px,color:#B06000;
+    classDef policy fill:#FCE8E6,stroke:#D93025,stroke-width:2px,color:#C5221F;
+    classDef backend fill:#F8F9FA,stroke:#3C4043,stroke-width:1px,color:#202124;
+
+    subgraph CLIENT_LAYER["1. Consumer Plane (클라이언트 계층)"]
+        Client["Enterprise Application / User"]:::client
+    end
+
+    subgraph INGRESS_LAYER["2. Ingress & Consumption: AGENT ENDPOINT"]
+        Endpoint["Agent Endpoint<br/>(Global Ingress ALB & DNS)"]:::ingress
+        OAuth["OAuth 2.0 / User Token Exchange"]:::ingress
+        CloudArmor["Cloud Armor WAF & DDoS Protection"]:::ingress
+    end
+
+    subgraph RUNTIME_LAYER["3. Execution & Identity: AGENT RUNTIME"]
+        Runtime["Vertex AI Reasoning Engine / Gemini 2.5"]:::runtime
+        Identity["AGENT IDENTITY<br/>(SPIFFE ID / Workload Identity / DPoP Token)"]:::runtime
+    end
+
+    subgraph GATEWAY_LAYER["4. Data Plane & Egress: AGENT GATEWAY"]
+        Envoy["Managed Envoy Proxy Engine"]:::gateway
+        PSC["Private Service Connect (PSC)<br/>Network Attachment"]:::gateway
+        
+        subgraph POLICY_LAYER["5. Control & Security: AGENT POLICY"]
+            CEL["IAM / IAP Request Authz<br/>(CEL Condition: ReadOnlyToolsOnly)"]:::policy
+            ModelArmor["Model Armor<br/>(Prompt Injection & Jailbreak Filter)"]:::policy
+            DLP["Cloud DLP Inspection<br/>(SSN/PII Cryptographic Masking)"]:::policy
+        end
+    end
+
+    subgraph BACKEND_LAYER["6. Enterprise VPC & Target MCP Tool Servers"]
+        DMS["MCP #1: Legacy DMS<br/>(search_applicant_tax_records)<br/><b>[결과: 200 OK - 읽기 허용]</b>"]:::backend
+        Payroll["MCP #2: Income Verifier<br/>(verify_employment_and_income)<br/><b>[결과: SSN 마스킹 처리]</b>"]:::backend
+        Email["MCP #3: Corporate Email<br/>(send_applicant_decision_email)<br/><b>[결과: 403 Forbidden 차단]</b>"]:::backend
+    end
+
+    Client -->|"1. User Request (HTTPS/gRPC)"| Endpoint
+    Endpoint -->|"2. Authenticated Session"| OAuth
+    OAuth -->|"3. Ingress Request with User Identity"| Runtime
+    Runtime --> Identity
+    Runtime -->|"4. Tool Call Egress (mTLS + Ingress DPoP)"| Envoy
+
+    Envoy -->|"5. Prompt & Content Check"| ModelArmor
+    Envoy -->|"6. Authorization Policy"| CEL
+    
+    CEL -->|"7a. Read Allowed"| DMS
+    CEL -->|"7b. Read Allowed"| Payroll
+    Payroll -.->|"8. Outbound Response Filtering"| DLP
+    DLP -->|"9. Masked PII Tag"| Envoy
+    
+    CEL -.->|"7c. Blocked Write Call (403)"| Email
+    style Email stroke:#D93025,stroke-width:2px,stroke-dasharray: 5 5;
 ```
-                      [ Client Application / Enterprise User ]
-                                         │
-                                         ▼ (HTTPS / gRPC)
-                   ┌──────────────────────────────────────────────┐
-                   │               AGENT ENDPOINT                 │
-                   │  - Global Ingress Virtual IP & DNS           │
-                   │  - OAuth 2.0 / User Token Exchange           │
-                   │  - Cloud Armor DDoS & WAF Protection         │
-                   └──────────────────────┬───────────────────────┘
-                                          │
-                                          ▼
-                   ┌──────────────────────────────────────────────┐
-                   │            AGENT RUNTIME (ADK)               │
-                   │  - Vertex AI Reasoning Engine / Gemini 2.5   │
-                   │  - Agent Identity (WIF / SPIFFE / DPoP)      │
-                   └──────────────────────┬───────────────────────┘
-                                          │
-                  Tool Call Egress        ▼ (mTLS + Ingress DPoP Token)
-       ════════════════════════════════════════════════════════════════════
-       ┌──────────────────────────────────────────────────────────────────┐
-       │                          AGENT GATEWAY                           │
-       │                                                                  │
-       │  ┌───────────────────────┐    ┌──────────────────────────────┐  │
-       │  │    AGENT IDENTITY     │    │         AGENT POLICY         │  │
-       │  │ - SPIFFE X.509 Verify │    │ - IAM CEL Authz              │  │
-       │  │ - Short-lived Token   │    │ - Model Armor Inspection     │  │
-       │  │   Minting / Exchange  │    │ - Cloud DLP InfoType Masking │  │
-       │  └───────────────────────┘    └──────────────────────────────┘  │
-       │                                                                  │
-       │  Managed Envoy Proxy Engine + Service Extensions (Rust/Wasm/gRPC)│
-       └──────────────┬───────────────────┬───────────────────┬───────────┘
-                      │ (PSC / VPC)       │ (PSC / VPC)       │ (Blocked!)
-                      ▼                   ▼                   ▼
-             ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-             │ MCP Server #1   │ │ MCP Server #2   │ │ MCP Server #3   │
-             │ [Legacy DMS]    │ │ [Income Verif.] │ │ [Corporate Mail]│
-             │ (읽기 인가 완료)  │ │ (SSN 마스킹 완료)│ │ (403 인가 차단)  │
-             └─────────────────┘ └─────────────────┘ └─────────────────┘
+
+---
+
+## 🔄 단일 엔드투엔드 처리 시퀀스 (Sequence Flow)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Enterprise User
+    participant Endpoint as Agent Endpoint
+    participant Runtime as Agent Runtime (ADK)
+    participant Gateway as Agent Gateway
+    participant Policy as Agent Policy (CEL & Model Armor)
+    participant MCP as Target MCP Servers
+
+    User->>Endpoint: 대출 심사 요청 ("Review Sterling family application")
+    Endpoint->>Runtime: 인가된 요청 라우팅 (OAuth 사용자 컨텍스트 전달)
+    
+    Note over Runtime: LLM이 질의를 분석하고 필요한 MCP 도구 호출 결정
+    Runtime->>Gateway: Tool Call Egress (SPIFFE X.509 mTLS + DPoP 토큰)
+    
+    Gateway->>Policy: 프롬프트 인젝션 및 안전성 검사 (Model Armor)
+    Policy-->>Gateway: 정상 프롬프트 판정 (통과)
+    
+    Gateway->>Policy: IAP Request Authz CEL 조건 검증 (ReadOnlyToolsOnly)
+    
+    alt 인가된 읽기 도구 호출 (legacy-dms / income-verifier)
+        Policy-->>Gateway: 호출 인가 (CEL 조건 일치)
+        Gateway->>MCP: PSC 전용망 통신으로 MCP 서버 실행
+        MCP-->>Gateway: 원본 데이터 반환 (SSN: 987-65-4321 포함)
+        Gateway->>Policy: Cloud DLP 비식별화 템플릿 검사
+        Policy-->>Gateway: 민감정보 마스킹 (SSN -> [US_SOCIAL_SECURITY_NUMBER])
+        Gateway-->>Runtime: 마스킹 완료된 도구 결과 전달
+    else 미인가 쓰기 도구 호출 (corporate-email)
+        Policy-->>Gateway: 호출 거부 (CEL 조건 불일치)
+        Gateway-->>Runtime: 403 Forbidden (PermissionDenied by IAP Policy)
+    end
+    
+    Runtime-->>Endpoint: 최종 대출 심사 요약 보고서 합성
+    Endpoint-->>User: 결과 반환
 ```
 
 ---
@@ -164,8 +223,3 @@ export PROJECT_ID="your-project-id"
 export REGION="us-central1"
 ./tests/run_test_flow.sh
 ```
-
----
-
-## 📜 라이선스 (License)
-Apache-2.0

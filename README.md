@@ -2,7 +2,7 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-Enterprise architecture and end-to-end testable implementation of **Gemini Enterprise Agent Engine**, demonstrating Zero Trust governance across its four foundational pillars:
+Enterprise architecture specification and testable end-to-end implementation of **Gemini Enterprise Agent Engine**, demonstrating Zero Trust governance across its four foundational pillars:
 
 1. **Agent Endpoint**: Unified ingress API gateway and developer consumption plane.
 2. **Agent Gateway**: High-performance managed Envoy data plane for tool egress, Private Service Connect (PSC), and Service Extensions.
@@ -11,47 +11,106 @@ Enterprise architecture and end-to-end testable implementation of **Gemini Enter
 
 ---
 
-## 🏛 Architecture Overview
+## 🏛 Architecture Topology
 
+```mermaid
+flowchart TD
+    classDef client fill:#E8F0FE,stroke:#1A73E8,stroke-width:2px,color:#1A73E8;
+    classDef ingress fill:#F1F3F4,stroke:#5F6368,stroke-width:2px,color:#202124;
+    classDef runtime fill:#E6F4EA,stroke:#137333,stroke-width:2px,color:#137333;
+    classDef gateway fill:#FEF7E0,stroke:#F29900,stroke-width:2px,color:#B06000;
+    classDef policy fill:#FCE8E6,stroke:#D93025,stroke-width:2px,color:#C5221F;
+    classDef backend fill:#F8F9FA,stroke:#3C4043,stroke-width:1px,color:#202124;
+
+    subgraph CLIENT_LAYER["1. Consumer Plane"]
+        Client["Enterprise Client / Chat App"]:::client
+    end
+
+    subgraph INGRESS_LAYER["2. Ingress & Consumption: AGENT ENDPOINT"]
+        Endpoint["Agent Endpoint<br/>(Global Ingress ALB & DNS)"]:::ingress
+        OAuth["OAuth 2.0 / User Token Exchange"]:::ingress
+        CloudArmor["Cloud Armor WAF & DDoS Protection"]:::ingress
+    end
+
+    subgraph RUNTIME_LAYER["3. Execution & Identity: AGENT RUNTIME"]
+        Runtime["Vertex AI Reasoning Engine / Gemini 2.5"]:::runtime
+        Identity["AGENT IDENTITY<br/>(Workload Identity / SPIFFE ID / DPoP Token)"]:::runtime
+    end
+
+    subgraph GATEWAY_LAYER["4. Data Plane & Egress: AGENT GATEWAY"]
+        Envoy["Managed Envoy Proxy Engine"]:::gateway
+        PSC["Private Service Connect (PSC)<br/>Network Attachment"]:::gateway
+        
+        subgraph POLICY_LAYER["5. Control & Security: AGENT POLICY"]
+            CEL["IAM / IAP Request Authz<br/>(CEL Condition: ReadOnlyToolsOnly)"]:::policy
+            ModelArmor["Model Armor<br/>(Prompt Injection & Jailbreak Filter)"]:::policy
+            DLP["Cloud DLP Inspection<br/>(SSN/PII Cryptographic Masking)"]:::policy
+        end
+    end
+
+    subgraph BACKEND_LAYER["6. Enterprise VPC & Target MCP Tool Servers"]
+        DMS["MCP #1: Legacy DMS<br/>(search_applicant_tax_records)<br/><b>[Status: 200 OK - Allowed]</b>"]:::backend
+        Payroll["MCP #2: Income Verifier<br/>(verify_employment_and_income)<br/><b>[Status: SSN Masked by DLP]</b>"]:::backend
+        Email["MCP #3: Corporate Email<br/>(send_applicant_decision_email)<br/><b>[Status: 403 Forbidden by CEL]</b>"]:::backend
+    end
+
+    Client -->|"1. User Request (HTTPS/gRPC)"| Endpoint
+    Endpoint -->|"2. Authenticated Session"| OAuth
+    OAuth -->|"3. Ingress Request with User Identity"| Runtime
+    Runtime --> Identity
+    Runtime -->|"4. Delegated Tool Call Egress (mTLS + DPoP)"| Envoy
+
+    Envoy -->|"5. Content & Prompt Inspection"| ModelArmor
+    Envoy -->|"6. Policy Evaluation"| CEL
+    
+    CEL -->|"7a. Read Authorized"| DMS
+    CEL -->|"7b. Read Authorized"| Payroll
+    Payroll -.->|"8. Outbound Response Filtering"| DLP
+    DLP -->|"9. Masked PII Output"| Envoy
+    
+    CEL -.->|"7c. Blocked Write Attempt (403)"| Email
+    style Email stroke:#D93025,stroke-width:2px,stroke-dasharray: 5 5;
 ```
-                      [ Client Application / Enterprise User ]
-                                         │
-                                         ▼ (HTTPS / gRPC)
-                   ┌──────────────────────────────────────────────┐
-                   │               AGENT ENDPOINT                 │
-                   │  - Global Ingress Virtual IP & DNS           │
-                   │  - OAuth 2.0 / User Token Exchange           │
-                   │  - Cloud Armor DDoS & WAF Protection         │
-                   └──────────────────────┬───────────────────────┘
-                                          │
-                                          ▼
-                   ┌──────────────────────────────────────────────┐
-                   │            AGENT RUNTIME (ADK)               │
-                   │  - Vertex AI Reasoning Engine / Gemini 2.5   │
-                   │  - Agent Identity (WIF / SPIFFE / DPoP)      │
-                   └──────────────────────┬───────────────────────┘
-                                          │
-                  Tool Call Egress        ▼ (mTLS + Ingress DPoP Token)
-       ════════════════════════════════════════════════════════════════════
-       ┌──────────────────────────────────────────────────────────────────┐
-       │                          AGENT GATEWAY                           │
-       │                                                                  │
-       │  ┌───────────────────────┐    ┌──────────────────────────────┐  │
-       │  │    AGENT IDENTITY     │    │         AGENT POLICY         │  │
-       │  │ - SPIFFE X.509 Verify │    │ - IAM CEL Authz              │  │
-       │  │ - Short-lived Token   │    │ - Model Armor Inspection     │  │
-       │  │   Minting / Exchange  │    │ - Cloud DLP InfoType Masking │  │
-       │  └───────────────────────┘    └──────────────────────────────┘  │
-       │                                                                  │
-       │  Managed Envoy Proxy Engine + Service Extensions (Rust/Wasm/gRPC)│
-       └──────────────┬───────────────────┬───────────────────┬───────────┘
-                      │ (PSC / VPC)       │ (PSC / VPC)       │ (Blocked!)
-                      ▼                   ▼                   ▼
-             ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-             │ MCP Server #1   │ │ MCP Server #2   │ │ MCP Server #3   │
-             │ [Legacy DMS]    │ │ [Income Verif.] │ │ [Corporate Mail]│
-             │ (Read-Only)     │ │ (DLP Masked)    │ │ (403 Forbidden) │
-             └─────────────────┘ └─────────────────┘ └─────────────────┘
+
+---
+
+## 🔄 End-to-End Request Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Enterprise User
+    participant Endpoint as Agent Endpoint
+    participant Runtime as Agent Runtime (ADK)
+    participant Gateway as Agent Gateway
+    participant Policy as Agent Policy (CEL & Model Armor)
+    participant MCP as Target MCP Servers
+
+    User->>Endpoint: Submit Loan Review ("Review Sterling family application")
+    Endpoint->>Runtime: Route Request (OAuth User Identity Context)
+    
+    Note over Runtime: LLM evaluates prompt & decides to call tools
+    Runtime->>Gateway: Egress Tool Call (SPIFFE X.509 mTLS + DPoP Token)
+    
+    Gateway->>Policy: Inspect Prompt (Model Armor)
+    Policy-->>Gateway: Prompt Safe (No Jailbreak Detected)
+    
+    Gateway->>Policy: Evaluate Tool Call via CEL (ReadOnlyToolsOnly)
+    
+    alt Authorized Read Tool (legacy-dms / income-verifier)
+        Policy-->>Gateway: Allowed (Matches CEL condition)
+        Gateway->>MCP: Call search_tax_records / verify_income via PSC
+        MCP-->>Gateway: Return Raw Records (Contains SSN: 987-65-4321)
+        Gateway->>Policy: Sanitize Output via Cloud DLP Template
+        Policy-->>Gateway: Redacted Data (SSN -> [US_SOCIAL_SECURITY_NUMBER])
+        Gateway-->>Runtime: Return Sanitized Tool Response
+    else Unauthorized Write Tool (corporate-email)
+        Policy-->>Gateway: Denied (CEL condition evaluates to false)
+        Gateway-->>Runtime: 403 Forbidden (PermissionDenied by IAP Policy)
+    end
+    
+    Runtime-->>Endpoint: Synthesize Final Underwriting Decision
+    Endpoint-->>User: Deliver Decision Summary
 ```
 
 ---
@@ -71,7 +130,8 @@ Enterprise architecture and end-to-end testable implementation of **Gemini Enter
 
 ```
 .
-├── README.md                              # This specification
+├── README.md                              # English specification (this file)
+├── README.ko.md                           # Korean specification
 ├── docs/
 │   ├── ARCHITECTURE.md                    # Deep-dive technical specification (Level 300/400)
 │   └── TEST_SCENARIO.md                   # Complete test walkthrough and scenario guide
@@ -159,8 +219,3 @@ export PROJECT_ID="your-project-id"
 export REGION="us-central1"
 ./tests/run_test_flow.sh
 ```
-
----
-
-## 📜 License
-Apache-2.0
