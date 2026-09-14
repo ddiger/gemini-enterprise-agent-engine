@@ -1,0 +1,21 @@
+{
+  "floor_setting": {
+    "filter_config": {
+      "pii_filter": {
+        "enforcement": "REDACT",
+        "confidence_threshold": "LIKELY"
+      },
+      "prompt_injection_and_jailbreak_filter": {
+        "enforcement": "BLOCK",
+        "confidence_threshold": "HIGH"
+      },
+      "malicious_urls_filter": {
+        "enforcement": "BLOCK"
+      },
+      "sdp_inspection": {
+        "enforcement": "INSPECT_AND_MASK",
+        "template_reference": "projects/PROJECT_ID/locations/us-central1/deidentifyTemplates/ssn_mask_template"
+      }
+    }
+  }
+}

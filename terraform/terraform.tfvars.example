@@ -1,0 +1,5 @@
+project_id   = "your-gcp-project-id"
+region       = "us-central1"
+vpc_name     = "enterprise-agent-vpc"
+subnet_cidr  = "10.10.0.0/24"
+psc_nat_cidr = "10.20.0.0/24"

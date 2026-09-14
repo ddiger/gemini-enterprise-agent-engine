@@ -1,0 +1,22 @@
+{
+  "description": "Cloud DLP De-identification Rule for Agent Gateway Egress",
+  "deidentify_config": {
+    "info_type_transformations": {
+      "transformations": [
+        {
+          "info_types": [
+            {
+              "name": "US_SOCIAL_SECURITY_NUMBER"
+            },
+            {
+              "name": "CREDIT_CARD_NUMBER"
+            }
+          ],
+          "primitive_transformation": {
+            "replace_with_info_type_config": {}
+          }
+        }
+      ]
+    }
+  }
+}
