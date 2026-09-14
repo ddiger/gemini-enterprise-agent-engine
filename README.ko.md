@@ -32,7 +32,7 @@ flowchart TD
     end
 
     subgraph RUNTIME_LAYER["3. Execution & Identity: AGENT RUNTIME"]
-        Runtime["Vertex AI Reasoning Engine / Gemini 2.5"]:::runtime
+        Runtime["Vertex AI Reasoning Engine / Gemini 3.8 Flash"]:::runtime
         Identity["AGENT IDENTITY<br/>(SPIFFE ID mTLS + 단기 DPoP 토큰)"]:::runtime
     end
 
@@ -84,7 +84,7 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 [Agent Endpoint]
       │
       ▼  (Step 2: Dynamic Registry Discovery & Tool Selection)
-[Agent Runtime] (Vertex AI / Gemini 2.5)
+[Agent Runtime] (Vertex AI / Gemini 3.8 Flash)
       │
       ▼  (Step 3: Egress with SPIFFE X.509 mTLS + DPoP Proof)
 [Agent Gateway] (Managed Envoy Proxy)
@@ -119,7 +119,7 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 - 에이전트가 기동될 때 `Agent Registry`(`projects/${PROJECT_ID}/locations/${REGION}/mcpServers`)를 자동으로 쿼리하여 인가된 MCP 서버 목록(`legacy-dms`, `income-verification-api`, `corporate-email`)과 각 도구의 OpenAPI/JSON-RPC 스펙(`toolspec.json`)을 동적으로 주입받습니다.
 
 ### 3. 암호학적 신원 증명과 이그레스 트래픽 생성 (Agent Identity)
-- LLM(Gemini 2.5)이 사용자 질의를 분석하고 *"세무 기록 조회 도구가 필요하다"*고 판단하면 툴 호출(Tool Call)을 트리거합니다.
+- 최신 고성능 추론 및 정밀한 도구 호출 능력을 갖춘 LLM(**Gemini 3.8 Flash**, 기본 모델: `gemini-3.8-flash`)이 사용자 질의를 분석하고 *"세무 기록 조회 도구가 필요하다"*고 판단하면 툴 호출(Tool Call)을 트리거합니다.
 - Agent Runtime은 툴 서버로 직접 나가지 않고, 배포 시 지정된 **Agent Gateway 엔드포인트**로 트래픽을 라우팅합니다.
 - 이때 Workload Identity Federation을 기반으로 에이전트 전용 **SPIFFE ID X.509 인증서(mTLS)**와 단기 **DPoP(Demonstrating Proof-of-Possession) JWT 토큰**을 실시간 민팅하여 헤더에 첨부합니다. 이로 인해 토큰 탈취나 중간자 재사용 공격(Replay Attack)이 원천적으로 불가능합니다.
 

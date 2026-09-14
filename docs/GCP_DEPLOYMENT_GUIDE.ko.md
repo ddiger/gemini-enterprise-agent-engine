@@ -185,8 +185,15 @@ Agent Development Kit (ADK) 기반의 주택담보대출 심사 에이전트를 
 cd src/mortgage-agent
 uv sync
 
-# 3. 에이전트 배포 스크립트 실행
-uv run python deploy_agent.py   --project=${PROJECT_ID}   --region=${REGION}   --enable-agent-identity   --agent-name=mortgage-agent   --agent-gateway=projects/${PROJECT_ID}/locations/${REGION}/agentGateways/agent-gateway   --mcp-invoker-sa=$(terraform -chdir=../../terraform output -raw agent_mcp_invoker_email)   --model-endpoint-location=global
+uv run python deploy_agent.py \
+  --project=${PROJECT_ID} \
+  --region=${REGION} \
+  --model=gemini-3.8-flash \
+  --enable-agent-identity \
+  --agent-name=mortgage-agent \
+  --agent-gateway=projects/${PROJECT_ID}/locations/${REGION}/agentGateways/agent-gateway \
+  --mcp-invoker-sa=$(terraform -chdir=../../terraform output -raw agent_mcp_invoker_email) \
+  --model-endpoint-location=global
 
 cd ../..
 ```
@@ -283,7 +290,7 @@ Playground 채팅창에 다음 프롬프트를 입력합니다:
 ### [테스트 4] Cloud Trace 분산 추적 모니터링
 1. Google Cloud Console > **Cloud Trace** > **추적 탐색기 (Trace Explorer)**로 이동합니다.
 2. 방금 실행한 요청을 클릭하여 엔드투엔드 스팬(Span) 폭포수 차트를 확인합니다:
-   - `Agent Runtime (Gemini 2.5)`
+   - `Agent Runtime (Gemini 3.8 Flash)`
    - `Agent Gateway (Envoy)`
    - `IAP REQUEST_AUTHZ`
    - `Model Armor CONTENT_AUTHZ`

@@ -303,8 +303,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="gemini-3.1-flash-lite",
-        help="Gemini model name for the agent (default: gemini-3.1-flash-lite)",
+        default="gemini-3.8-flash",
+        help="Gemini model name for the agent (default: gemini-3.8-flash)",
     )
     parser.add_argument(
         "--model-endpoint-location",

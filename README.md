@@ -32,7 +32,7 @@ flowchart TD
     end
 
     subgraph RUNTIME_LAYER["3. Execution & Identity: AGENT RUNTIME"]
-        Runtime["Vertex AI Reasoning Engine / Gemini 2.5"]:::runtime
+        Runtime["Vertex AI Reasoning Engine / Gemini 3.8 Flash"]:::runtime
         Identity["AGENT IDENTITY<br/>(SPIFFE ID mTLS + Short-lived DPoP Token)"]:::runtime
     end
 
@@ -84,7 +84,7 @@ The concrete sequence of network, cryptographic, and policy actions executed on 
 [Agent Endpoint]
       │
       ▼  (Step 2: Dynamic Registry Discovery & Tool Selection)
-[Agent Runtime] (Vertex AI / Gemini 2.5)
+[Agent Runtime] (Vertex AI / Gemini 3.8 Flash)
       │
       ▼  (Step 3: Egress with SPIFFE X.509 mTLS + DPoP Proof)
 [Agent Gateway] (Managed Envoy Proxy)
@@ -119,7 +119,7 @@ The concrete sequence of network, cryptographic, and policy actions executed on 
 - On startup, the agent dynamically queries the project's `Agent Registry` (`projects/${PROJECT_ID}/locations/${REGION}/mcpServers`) to retrieve active tool specifications (`toolspec.json`), binding tool schemas in real time.
 
 ### 3. Cryptographic Identity & Egress Traffic Generation (Agent Identity)
-- When Gemini 2.5 decides to invoke an MCP tool, traffic routes exclusively through the **Agent Gateway**.
+- When the latest reasoning model **Gemini 3.8 Flash** (default: `gemini-3.8-flash`) decides to invoke an MCP tool, traffic routes exclusively through the **Agent Gateway**.
 - Using Workload Identity Federation, the runtime signs the egress request with a **SPIFFE ID X.509 certificate (mTLS)** and mints a short-lived **DPoP (Demonstrating Proof-of-Possession) JWT token**. This ensures non-replayable, cryptographically attested agent identity at the packet level.
 
 ### 4. Deep Traffic Interception in Envoy (Agent Gateway & Policy)
