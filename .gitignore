@@ -32,3 +32,8 @@ override.tf.json
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Generated deployment manifests
+skaffold.yaml
+cloudrun/*.yaml
+!cloudrun/*.yaml.tmpl

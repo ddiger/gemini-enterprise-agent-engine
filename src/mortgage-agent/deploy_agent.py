@@ -463,7 +463,7 @@ def main() -> None:
     from agent.agent import root_agent
     from agent.otel_setup import InstrumentedAdkApp
 
-    app = InstrumentedAdkApp(agent=root_agent, enable_tracing=True)
+    app = InstrumentedAdkApp(agent=root_agent)
 
     # Build PSC-I and agent identity config
     config = {}
@@ -483,6 +483,47 @@ def main() -> None:
     if args.agent_gateway:
         config["agent_gateway_config"] = {"agent_to_anywhere_config": {"agent_gateway": args.agent_gateway}}
 
+    gateway_ca_cert = None
+    if args.agent_gateway:
+        gw_parts = args.agent_gateway.split("/")
+        if len(gw_parts) >= 6:
+            gw_proj = gw_parts[1]
+            gw_loc = gw_parts[3]
+            gw_name = gw_parts[5]
+        else:
+            gw_proj = args.project
+            gw_loc = args.region
+            gw_name = args.agent_gateway
+
+        print(f"Fetching Agent Gateway root certificate for {gw_name} ({gw_loc})...")
+        try:
+            import subprocess
+
+            res = subprocess.run(
+                [
+                    "gcloud",
+                    "beta",
+                    "network-services",
+                    "agent-gateways",
+                    "describe",
+                    gw_name,
+                    f"--location={gw_loc}",
+                    f"--project={gw_proj}",
+                    "--format=value(agentGatewayCard.rootCertificates)",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            out = res.stdout.strip()
+            if "-----BEGIN CERTIFICATE-----" in out:
+                gateway_ca_cert = out
+                print("  Successfully retrieved Agent Gateway TLS root certificate.")
+            else:
+                print("  Warning: No root certificate found in Agent Gateway card.")
+        except Exception as e:
+            print(f"  Warning: Could not fetch Agent Gateway root certificate via gcloud: {e}")
+
     agent_src = os.path.join(agent_dir, "agent")
     staging_dir = tempfile.mkdtemp(prefix="agent_deploy_")
     original_cwd = os.getcwd()
@@ -493,6 +534,12 @@ def main() -> None:
             os.path.join(staging_dir, "agent"),
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
         )
+
+        if gateway_ca_cert:
+            with open(os.path.join(staging_dir, "agent_gateway_ca.crt"), "w", encoding="utf-8") as f:
+                f.write(gateway_ca_cert)
+            with open(os.path.join(staging_dir, "agent", "agent_gateway_ca.crt"), "w", encoding="utf-8") as f:
+                f.write(gateway_ca_cert)
 
         # Create installation_scripts/ with a workaround for the
         # platform bug where .venv/bin/python doesn't exist in the
@@ -525,6 +572,18 @@ def main() -> None:
             f.write("include-system-site-packages = true\n")
             f.write("PYCFG\n")
             f.write('echo "Created .venv virtualenv (site-packages: /code/.venv/lib/python${PY_VER}/site-packages)"\n')
+            f.write("if [ -f /code/agent_gateway_ca.crt ]; then\n")
+            f.write("    echo 'Found /code/agent_gateway_ca.crt; generating /code/ca_bundle.pem'\n")
+            f.write("    CERTIFI_CA=$(python3 -m certifi 2>/dev/null || true)\n")
+            f.write('    if [ -n "$CERTIFI_CA" ] && [ -f "$CERTIFI_CA" ]; then\n')
+            f.write('        cat "$CERTIFI_CA" /code/agent_gateway_ca.crt > /code/ca_bundle.pem\n')
+            f.write("    elif [ -f /etc/ssl/certs/ca-certificates.crt ]; then\n")
+            f.write("        cat /etc/ssl/certs/ca-certificates.crt /code/agent_gateway_ca.crt > /code/ca_bundle.pem\n")
+            f.write("    else\n")
+            f.write("        cp /code/agent_gateway_ca.crt /code/ca_bundle.pem\n")
+            f.write("    fi\n")
+            f.write("    chmod 666 /code/ca_bundle.pem 2>/dev/null || true\n")
+            f.write("fi\n")
         os.chmod(script_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
 
         os.chdir(staging_dir)
@@ -562,6 +621,7 @@ def main() -> None:
             extra_packages=[
                 "agent",
                 "installation_scripts/create_venv.sh",
+                *(["agent_gateway_ca.crt"] if gateway_ca_cert else []),
             ],
             build_options={
                 "installation_scripts": [
@@ -585,6 +645,15 @@ def main() -> None:
                 **({"MCP_REGISTRY_FILTER": args.registry_filter} if args.registry_filter else {}),
                 **({"MCP_REGISTRY_ENDPOINT": args.registry_endpoint} if args.registry_endpoint else {}),
                 **({"MCP_INVOKER_SA_EMAIL": args.mcp_invoker_sa} if args.mcp_invoker_sa else {}),
+                **(
+                    {
+                        "SSL_CERT_FILE": "/code/ca_bundle.pem",
+                        "REQUESTS_CA_BUNDLE": "/code/ca_bundle.pem",
+                        "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH": "/code/ca_bundle.pem",
+                    }
+                    if gateway_ca_cert
+                    else {}
+                ),
             },
             display_name=args.display_name,
             description=description,
@@ -596,6 +665,7 @@ def main() -> None:
             deploy_config.update(config)
 
         if args.update:
+            deploy_config.pop("identity_type", None)
             engine = client.agent_engines.update(name=args.update, agent=app, config=deploy_config)
         elif args.enable_agent_identity:
             # 1. Create empty agent shell

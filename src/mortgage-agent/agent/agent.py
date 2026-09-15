@@ -29,6 +29,70 @@ from . import tools
 logger = logging.getLogger(__name__)
 
 
+def _setup_gateway_ca():
+    """Ensure Agent Gateway TLS inspection root certificates are trusted across all HTTP/TLS clients."""
+    potential_ca_files = [
+        os.environ.get("AGENT_GATEWAY_CA_FILE"),
+        "/code/agent_gateway_ca.crt",
+        os.path.join(os.path.dirname(__file__), "agent_gateway_ca.crt"),
+    ]
+    ca_path = None
+    for p in potential_ca_files:
+        if p and os.path.exists(p) and not p.endswith("ca_bundle.pem"):
+            ca_path = p
+            break
+
+    if not ca_path:
+        return
+
+    bundle_path = "/code/ca_bundle.pem" if os.path.exists("/code") else "/tmp/ca_bundle.pem"
+    try:
+        import certifi
+
+        certifi_cacert = certifi.where()
+        with open(ca_path, "r", encoding="utf-8") as f:
+            ca_cert_data = f.read().strip()
+
+        certifi_data = ""
+        try:
+            with open(certifi_cacert, "r", encoding="utf-8") as f:
+                certifi_data = f.read()
+        except Exception:
+            pass
+
+        # Build combined bundle: certifi root CAs + Gateway CA
+        combined_bundle = certifi_data
+        if ca_cert_data and ca_cert_data not in combined_bundle:
+            combined_bundle = combined_bundle + "\n" + ca_cert_data
+
+        try:
+            with open(bundle_path, "w", encoding="utf-8") as f:
+                f.write(combined_bundle)
+        except Exception:
+            bundle_path = "/tmp/ca_bundle.pem"
+            with open(bundle_path, "w", encoding="utf-8") as f:
+                f.write(combined_bundle)
+
+        os.environ["SSL_CERT_FILE"] = bundle_path
+        os.environ["REQUESTS_CA_BUNDLE"] = bundle_path
+        os.environ["GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"] = bundle_path
+
+        # Monkeypatch certifi.where so libraries like httpx pick up the combined bundle
+        certifi.where = lambda: bundle_path
+        try:
+            import httpx._config
+            httpx._config.DEFAULT_CA_BUNDLE_PATH = bundle_path
+        except Exception:
+            pass
+
+        logger.info("Configured Agent Gateway CA from %s into %s and certifi", ca_path, bundle_path)
+    except Exception as e:
+        logger.warning("Failed to configure Gateway CA: %s", e)
+
+
+_setup_gateway_ca()
+
+
 def _build_impersonation_factory(target_url: str, target_sa_email: str):
     """Return an httpx_client_factory that signs requests as `target_sa_email`.
 
