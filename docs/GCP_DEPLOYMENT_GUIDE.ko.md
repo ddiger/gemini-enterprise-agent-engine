@@ -24,7 +24,6 @@ flowchart TD
     subgraph INGRESS_LAYER["2. 인그레스 계층 (Agent Endpoint)"]
         Endpoint["Vertex AI Agent Engine Endpoint<br/>(Google API / OAuth 2.0)"]:::ingress
         OAuth["OAuth 2.0 / 사용자 주체 토큰 교환"]:::ingress
-        CloudArmor["Cloud Armor WAF 및 DDoS 방어"]:::ingress
     end
 
     subgraph RUNTIME_LAYER["3. 에이전트 실행 & 신원 계층 (Agent Runtime & Identity)"]

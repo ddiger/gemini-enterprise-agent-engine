@@ -26,9 +26,8 @@ flowchart TD
     end
 
     subgraph INGRESS_LAYER["2. Ingress & Consumption: AGENT ENDPOINT"]
-        Endpoint["Agent Endpoint<br/>(Global Ingress ALB & DNS)"]:::ingress
+        Endpoint["Agent Endpoint<br/>(Vertex AI Managed Endpoint / OAuth 2.0)"]:::ingress
         OAuth["OAuth 2.0 / User Token Exchange"]:::ingress
-        CloudArmor["Cloud Armor WAF & DDoS Protection"]:::ingress
     end
 
     subgraph RUNTIME_LAYER["3. Execution & Identity: AGENT RUNTIME"]
@@ -110,9 +109,9 @@ The concrete sequence of network, cryptographic, and policy actions executed on 
 ```
 
 ### 1. Ingress & User Identity Propagation (Agent Endpoint)
-- External queries arrive via **Agent Endpoint** (Google Cloud Global External Application Load Balancer).
-- `Cloud Armor` enforces L7 WAF rules and DDoS defenses.
-- The user's OAuth 2.0 credential is authenticated, and the caller's identity is propagated downstream to the **Agent Runtime** for Context-Aware Access and audit logging.
+- External queries arrive via **Agent Endpoint** (Vertex AI Managed API Endpoint / Gemini Enterprise UI).
+- Google Cloud IAM and OAuth 2.0 authenticate caller identity and establish secure session contexts.
+- The caller's identity is propagated downstream to the **Agent Runtime** for Context-Aware Access and audit logging.
 
 ### 2. Dynamic Tool Discovery (Agent Registry)
 - The agent implementation (`src/mortgage-agent/agent/agent.py`) does not contain hardcoded backend IP addresses or URLs.

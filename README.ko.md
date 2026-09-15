@@ -28,7 +28,6 @@ flowchart TD
     subgraph INGRESS_LAYER["2. Ingress & Consumption: AGENT ENDPOINT"]
         Endpoint["Agent Endpoint<br/>(Vertex AI Managed Endpoint / OAuth 2.0)"]:::ingress
         OAuth["OAuth 2.0 / 사용자 주체 토큰 교환"]:::ingress
-        CloudArmor["Cloud Armor WAF 및 DDoS 방어"]:::ingress
     end
 
     subgraph RUNTIME_LAYER["3. Execution & Identity: AGENT RUNTIME"]
@@ -110,8 +109,8 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 ```
 
 ### 1. 인그레스 및 사용자 컨텍스트 전파 (Agent Endpoint)
-- 사용자가 Gemini Enterprise UI, 모바일 앱, 또는 REST API를 통해 질문을 전송하면 **Agent Endpoint(글로벌 외부 애플리케이션 부하분산기)**에서 수신합니다.
-- `Cloud Armor`가 인바운드 DDoS 및 L7 웹 공격을 필터링하고, `OAuth 2.0` 토큰을 통해 사용자 신원(User Principal)을 검증합니다.
+- 사용자가 Gemini Enterprise UI, 콘솔 Playground, 또는 REST/gRPC API를 통해 질문을 전송하면 **Agent Endpoint(Vertex AI 관리형 엔드포인트)**에서 수신합니다.
+- Google Cloud IAM 및 `OAuth 2.0` 토큰을 통해 사용자 신원(User Principal)을 인증하고 보안 세션을 수립합니다.
 - 사용자 인증 정보는 요청 컨텍스트에 캡슐화되어 다운스트림 **Agent Runtime**으로 안전하게 전달됩니다(On-Behalf-Of 흐름 지원).
 
 ### 2. 동적 도구 탐색 (Agent Registry Discovery)
