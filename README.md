@@ -33,7 +33,7 @@ flowchart TD
 
     subgraph RUNTIME_LAYER["3. Execution & Identity: AGENT RUNTIME"]
         Runtime["Vertex AI Reasoning Engine / Gemini 3.8 Flash"]:::runtime
-        Identity["AGENT IDENTITY<br/>(SPIFFE ID mTLS + Short-lived DPoP Token)"]:::runtime
+        Identity["AGENT IDENTITY<br/>(Service Account Impersonation + OIDC ID Token)"]:::runtime
     end
 
     subgraph GATEWAY_LAYER["4. Data Plane & Egress: AGENT GATEWAY"]
@@ -120,7 +120,7 @@ The concrete sequence of network, cryptographic, and policy actions executed on 
 
 ### 3. Cryptographic Identity & Egress Traffic Generation (Agent Identity)
 - When the latest reasoning model **Gemini 3.8 Flash** (default: `gemini-3.8-flash`) decides to invoke an MCP tool, traffic routes exclusively through the **Agent Gateway**.
-- Using Workload Identity Federation, the runtime signs the egress request with a **SPIFFE ID X.509 certificate (mTLS)** and mints a short-lived **DPoP (Demonstrating Proof-of-Possession) JWT token**. This ensures non-replayable, cryptographically attested agent identity at the packet level.
+- Using Workload Identity Federation and **Service Account Impersonation**, the runtime mints a short-lived **OIDC ID token** scoped strictly to the agent persona. This eliminates ambient credential risks and prevents unauthorized lateral movement.
 
 ### 4. Deep Traffic Interception in Envoy (Agent Gateway & Policy)
 As requests traverse the managed Envoy proxy, two Service Extension callouts are triggered:
@@ -142,7 +142,7 @@ As requests traverse the managed Envoy proxy, two Service Extension callouts are
 
 ### 6. Outbound Response Sanitization via Cloud DLP
 - When `legacy-dms` or `income-verification-api` returns financial records containing Social Security Numbers (`323-45-6789`), the response payload is intercepted on outbound traversal.
-- Cloud DLP templates (`agw-ssn-inspect-template` and `agw-ssn-deidentify-template`) detect SSN patterns and replace them in-flight with `[US_SOCIAL_SECURITY_NUMBER]`.
+- Cloud DLP templates (`agw-ssn-inspect-template` and `agw-ssn-redaction-template`) detect SSN patterns and replace them in-flight with `[US_SOCIAL_SECURITY_NUMBER]`.
 - Neither the LLM context nor the client ever sees raw PII.
 
 ### 7. End-to-End Distributed Observability
@@ -282,7 +282,7 @@ cd ../..
 # 5. Apply IAP CEL Governance Policies (Allow Read, Deny External Email)
 ./scripts/grant_agent_mcp_egress.sh --mcp --agent-id ${AGENT_ID} --mcp-filter "legacy-dms income-verification"
 ./scripts/grant_agent_mcp_egress.sh --mcp --agent-id ${AGENT_ID} --mcp-filter "corporate-email" \
-  --condition-expression "api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''" \
+  --condition-expression "api.getAttribute('iap.googleapis.com/mcp.toolName', '') in ['list_templates', '']" \
   --condition-title "ReadOnlyToolsOnly" \
   --condition-description "Restrict ${AGENT_ID} to read-only tools on corporate-email"
 ```

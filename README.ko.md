@@ -26,14 +26,14 @@ flowchart TD
     end
 
     subgraph INGRESS_LAYER["2. Ingress & Consumption: AGENT ENDPOINT"]
-        Endpoint["Agent Endpoint<br/>(글로벌 외부 부하분산기 & DNS)"]:::ingress
+        Endpoint["Agent Endpoint<br/>(Vertex AI Managed Endpoint / OAuth 2.0)"]:::ingress
         OAuth["OAuth 2.0 / 사용자 주체 토큰 교환"]:::ingress
         CloudArmor["Cloud Armor WAF 및 DDoS 방어"]:::ingress
     end
 
     subgraph RUNTIME_LAYER["3. Execution & Identity: AGENT RUNTIME"]
         Runtime["Vertex AI Reasoning Engine / Gemini 3.8 Flash"]:::runtime
-        Identity["AGENT IDENTITY<br/>(SPIFFE ID mTLS + 단기 DPoP 토큰)"]:::runtime
+        Identity["AGENT IDENTITY<br/>(Service Account Impersonation + OIDC ID Token)"]:::runtime
     end
 
     subgraph GATEWAY_LAYER["4. Data Plane & Egress: AGENT GATEWAY"]
@@ -57,7 +57,7 @@ flowchart TD
     Endpoint -->|"2. 인증 세션 및 사용자 컨텍스트 전달"| OAuth
     OAuth -->|"3. 인그레스 요청"| Runtime
     Runtime --> Identity
-    Runtime -->|"4. 도구 호출 Egress (mTLS + DPoP)"| Envoy
+    Runtime -->|"4. 도구 호출 Egress (OIDC ID Token)"| Envoy
 
     Envoy -->|"5. 프롬프트 인젝션 검사"| ModelArmor
     Envoy -->|"6. 툴 레벨 권한 판정"| CEL
@@ -121,7 +121,7 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 ### 3. 암호학적 신원 증명과 이그레스 트래픽 생성 (Agent Identity)
 - 최신 고성능 추론 및 정밀한 도구 호출 능력을 갖춘 LLM(**Gemini 3.8 Flash**, 기본 모델: `gemini-3.8-flash`)이 사용자 질의를 분석하고 *"세무 기록 조회 도구가 필요하다"*고 판단하면 툴 호출(Tool Call)을 트리거합니다.
 - Agent Runtime은 툴 서버로 직접 나가지 않고, 배포 시 지정된 **Agent Gateway 엔드포인트**로 트래픽을 라우팅합니다.
-- 이때 Workload Identity Federation을 기반으로 에이전트 전용 **SPIFFE ID X.509 인증서(mTLS)**와 단기 **DPoP(Demonstrating Proof-of-Possession) JWT 토큰**을 실시간 민팅하여 헤더에 첨부합니다. 이로 인해 토큰 탈취나 중간자 재사용 공격(Replay Attack)이 원천적으로 불가능합니다.
+- 이때 Workload Identity Federation 및 **Service Account Impersonation**을 기반으로 에이전트 전용 단기 **OIDC ID 토큰**을 실시간 발급받아 헤더에 첨부합니다. 이를 통해 에이전트 단위로 스코프가 격리되며 토큰 탈취나 비인가 횡적 이동(Lateral Movement)이 불가능합니다.
 
 ### 4. 관리형 Envoy 필터 체인의 심층 인터셉션 (Agent Gateway & Policy)
 도구 호출 요청이 Agent Gateway에 도착하면, 관리형 Envoy 프록시의 필터 체인(Filter Chain)이 순차적으로 작동합니다:
@@ -145,7 +145,7 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 
 ### 6. 아웃바운드 응답 데이터의 실시간 Cloud DLP 마스킹
 - 백엔드 MCP 도구(`legacy-dms`, `income-verification-api`)가 세무 데이터나 급여 내역을 조회하여 반환할 때, 원본 응답에는 신청자의 민감한 주민등록번호(SSN: `323-45-6789`)가 포함되어 있습니다.
-- 응답 데이터가 Agent Gateway를 다시 통과하는 순간, **Cloud DLP 연동 검사 엔진**이 작동하여 `agw-ssn-inspect-template` 및 `agw-ssn-deidentify-template` 규칙에 따라 SSN 패턴을 감지하고 `[US_SOCIAL_SECURITY_NUMBER]`로 즉시 치환(Redaction)합니다.
+- 응답 데이터가 Agent Gateway를 다시 통과하는 순간, **Cloud DLP 연동 검사 엔진**이 작동하여 `agw-ssn-inspect-template` 및 `agw-ssn-redaction-template` 규칙에 따라 SSN 패턴을 감지하고 `[US_SOCIAL_SECURITY_NUMBER]`로 즉시 치환(Redaction)합니다.
 - 최종적으로 에이전트 런타임 및 사용자에게 전달되는 컨텍스트에는 비식별화된 안전한 데이터만 노출됩니다.
 
 ### 7. Cloud Trace 엔드투엔드 분산 관측성 (Observability)
@@ -288,7 +288,7 @@ cd ../..
 # 5. IAP Egress 정책 및 CEL 조건식 부여 (읽기 허용, 메일 쓰기 차단)
 ./scripts/grant_agent_mcp_egress.sh --mcp --agent-id ${AGENT_ID} --mcp-filter "legacy-dms income-verification"
 ./scripts/grant_agent_mcp_egress.sh --mcp --agent-id ${AGENT_ID} --mcp-filter "corporate-email" \
-  --condition-expression "api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''" \
+  --condition-expression "api.getAttribute('iap.googleapis.com/mcp.toolName', '') in ['list_templates', '']" \
   --condition-title "ReadOnlyToolsOnly" \
   --condition-description "Restrict ${AGENT_ID} to read-only tools on corporate-email"
 ```

@@ -22,14 +22,14 @@ flowchart TD
     end
 
     subgraph INGRESS_LAYER["2. 인그레스 계층 (Agent Endpoint)"]
-        Endpoint["글로벌 외부 부하분산기 (ALB)"]:::ingress
+        Endpoint["Vertex AI Agent Engine Endpoint<br/>(Google API / OAuth 2.0)"]:::ingress
         OAuth["OAuth 2.0 / 사용자 주체 토큰 교환"]:::ingress
         CloudArmor["Cloud Armor WAF 및 DDoS 방어"]:::ingress
     end
 
     subgraph RUNTIME_LAYER["3. 에이전트 실행 & 신원 계층 (Agent Runtime & Identity)"]
         Runtime["Vertex AI Reasoning Engine<br/>(Gemini 3.8 Flash on ADK)"]:::runtime
-        Identity["Agent Identity<br/>(SPIFFE ID mTLS + 단기 DPoP 토큰)"]:::runtime
+        Identity["Agent Identity<br/>(Service Account Impersonation + OIDC ID 토큰)"]:::runtime
     end
 
     subgraph GATEWAY_LAYER["4. 데이터 평면 & 정책 계층 (Agent Gateway & Policy)"]
@@ -53,7 +53,7 @@ flowchart TD
     Endpoint --> OAuth
     OAuth --> Runtime
     Runtime --> Identity
-    Runtime -->|"Tool Egress (mTLS + DPoP)"| Gateway
+    Runtime -->|"Tool Egress (OIDC Token)"| Gateway
 
     Gateway --> ModelArmor
     Gateway --> IAP
@@ -140,13 +140,13 @@ sed -i "s/user:admin@example.com/user:$(gcloud config get-value account)/g" terr
 
 # [선택 사항] 사용자 정의 VPC 변수가 설정된 경우 terraform.tfvars에 반영
 if [ -n "${VPC_NAME:-}" ]; then
-  echo "vpc_name = "${VPC_NAME}"" >> terraform.tfvars
+  echo "vpc_name = \"${VPC_NAME}\"" >> terraform.tfvars
 fi
 if [ -n "${PRIMARY_SUBNET_CIDR:-}" ]; then
-  echo "primary_subnet_cidr = "${PRIMARY_SUBNET_CIDR}"" >> terraform.tfvars
+  echo "primary_subnet_cidr = \"${PRIMARY_SUBNET_CIDR}\"" >> terraform.tfvars
 fi
 if [ -n "${AGENT_GATEWAY_SUBNET_CIDR:-}" ]; then
-  echo "agent_gateway_subnet_cidr = "${AGENT_GATEWAY_SUBNET_CIDR}"" >> terraform.tfvars
+  echo "agent_gateway_subnet_cidr = \"${AGENT_GATEWAY_SUBNET_CIDR}\"" >> terraform.tfvars
 fi
 
 # 3. Terraform 초기화 및 배포 (약 8~10분 소요)
@@ -314,15 +314,13 @@ AGENT_ID = '${AGENT_ID}'
 vertexai.init(project=PROJECT_ID, location=REGION)
 agent = reasoning_engines.ReasoningEngine(f'projects/{PROJECT_ID}/locations/{REGION}/reasoningEngines/{AGENT_ID}')
 
-print('
-' + '='*60)
+print('\n' + '='*60)
 print('>>> [테스트 1: 읽기 도구 호출 & Cloud DLP SSN 마스킹 검증]')
 print('='*60)
 resp1 = agent.query(input='I am reviewing the Sterling family application. Can you summarize their 2023 and 2024 tax returns and verify their income?')
 print(resp1)
 
-print('
-' + '='*60)
+print('\n' + '='*60)
 print('>>> [테스트 2: 쓰기 도구 corporate-email 403 Forbidden 차단 검증]')
 print('='*60)
 resp2 = agent.query(input='Can you send a summary of this to my email jane@example.com using corporate-email?')

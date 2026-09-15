@@ -71,35 +71,17 @@ flowchart TD
 
 ## 3. 컴포넌트별 기술 심층 분석
 
-### 3.1. Agent Endpoint (클라이언트 샌드박스 및 호출 엔드포인트 거버넌스)
+### 3.1. Agent Endpoint (소비 계층 및 호출 엔드포인트 거버넌스)
 
-Agent Endpoint는 클라우드 중심의 거버넌스를 개발자 워크스테이션 및 엔드포인트 디바이스까지 확장하는 **Secure Client Sandbox (SCS)**의 제어 플레인과, 에이전트 상호작용의 타깃이 되는 **서비스 엔드포인트**라는 두 가지 핵심 축으로 구성됩니다.
+**Agent Endpoint**는 클라이언트(Gemini Enterprise 웹/모바일 UI, 사내 포털, REST/gRPC API)가 에이전트에 안전하게 접속하고 사용자 인증을 수행하는 **인그레스 진입점**입니다.
 
-#### A. Agent Endpoint API (`agentendpoint.googleapis.com`)
-로컬 머신(macOS, Linux, Windows)에서 실행되는 AI 에이전트(예: Gemini CLI, Claude Code, 엔터프라이즈 코딩 에이전트)를 중앙에서 격리 및 정책 통제하기 위한 Google Cloud One Platform 공식 API입니다.
-
-* **계층형 리소스 계층 구조 (Resource Hierarchy)**:
-  1. `DeviceConfig`:
-     - 리소스 경로: `projects/{proj}/locations/{loc}/deviceConfigs/{deviceConfigId}`
-     - 디바이스 플릿 단위 정책. Workload Identity Pool Provider 바인딩 및 Enterprise Certificate Proxy(macOS Keychain, Linux PKCS#11, Windows CryptoAPI) 정의.
-  2. `SandboxConfig`:
-     - 리소스 경로: `projects/{proj}/locations/{loc}/sandboxConfigs/{sandboxConfigId}`
-     - 에이전트가 격리될 샌드박스 환경 사양. OS 격리 프로파일(macOS Seatbelt, Linux Bubblewrap, MicroVM), 프록시 엔드포인트 설정, 연결된 Agent Registry의 `AiApplication` 매핑.
-  3. `AgentConfig`:
-     - 리소스 경로: `.../sandboxConfigs/{sandboxConfigId}/agentConfigs/{agentConfigId}`
-     - 특정 바이너리/명령어(예: `claude-code`, `jetski-cli`)에 대한 실행 파라미터 및 바이너리 해시 검증 스펙.
-  4. `LocalAgent`:
-     - 리소스 경로: `.../agentConfigs/{agentConfigId}/localAgents/{localAgentId}`
-     - 디바이스에서 실제 구동된 런타임 인스턴스. 사용자의 CPI(Cloud Principal Identifier)와 바인딩되며, 생성 시 Agent Registry에 정식 Agent URN으로 자동 등록.
-
-#### B. 온-디바이스(On-Device) 런타임 아키텍처
-* **ACC (Agent Cloud Client)**: 로컬 프로세스 수명주기(Lifecycle: Start, Bootstrap, AddSandbox, Stop) 관리.
-* **AIR (Agent Identity Runtime)**: 에이전트의 프로세스 권한을 확인하고 로컬 자격증명을 중계.
-* **LAR (Local Agent Registry - `lard`)**:
-  - 루프백 포트 `127.0.0.1:8082`에서 gRPC로 동작하는 초경량 정책 데몬.
-  - Cloud Agent Registry(CAR)의 인가 목록(Agents, MCP Servers, Endpoints)을 SQLite(`~/.scs/lar/lar.db`)에 로컬 동기화.
-  - **Fail-Static 운영성**: 네트워크가 단절된 오프라인(비행기, 폐쇄망) 상태에서도 기 캐시된 정책에 대해 무중단 정상 평가 지원. 미캐시된 신규 타깃에 대해서는 엄격한 **Fail-Closed(403 차단)** 집행.
-* **LAG (Local Agent Gateway)**: 로컬 Envoy 기반 포워드 프록시로, 에이전트 프로세스의 모든 아웃바운드 트래픽을 가로채 LAR 및 클라우드 PDP(Prism)로 검증.
+#### A. 관리형 호출 엔드포인트 (`aiplatform.googleapis.com`)
+* **엔터프라이즈 진입점**:
+  - Google Cloud의 **Vertex AI Agent Engine (Reasoning Engine)** 관리형 엔드포인트(`projects/{proj}/locations/{loc}/reasoningEngines/{id}:query`).
+  - 사내 직원은 Google Cloud Console, Gemini Enterprise 대화형 인터페이스, 또는 조직의 SSO(Single Sign-On)가 통합된 프론트엔드 API를 통해 요청을 전달합니다.
+* **사용자 신원 및 세션 인증**:
+  - `OAuth 2.0` 및 Google Cloud IAM 기반으로 호출자의 사용자 신원(User Principal)을 검증.
+  - 사용자 컨텍스트는 요청 헤더에 안전하게 캡슐화되어 Agent Runtime으로 전달되며, 감사 로그(Cloud Audit Logs)에 주체별 활동 기록이 남습니다.
 
 ---
 
@@ -131,31 +113,17 @@ Agent Endpoint는 클라우드 중심의 거버넌스를 개발자 워크스테�
 
 ---
 
-### 3.3. Agent Identity (암호학적 고유 식별 및 자격증명 관리)
+### 3.3. Agent Identity (에이전트 고유 신원 및 자격증명 관리)
 
-전통적인 클라우드 아키텍처에서는 워크로드에 광범위한 서비스 계정(Service Account)을 부여했으나, 이는 다중 에이전트 환경에서 횡적 이동(Lateral Movement) 및 권한 남용의 취약점이 됩니다. Agent Identity는 에이전트 단위의 영구적이고 위조 불가능한 암호학적 페르소나를 부여합니다.
+전통적인 클라우드 아키텍처에서는 워크로드에 광범위한 서비스 계정(Service Account)을 정적으로 부여했으나, 이는 에이전트 침해 시 횡적 이동(Lateral Movement) 및 권한 남용의 취약점이 됩니다. **Agent Identity**는 에이전트 단위로 한정된 자격증명을 동적으로 중계합니다.
 
-#### A. SPIFFE 표준 및 암호학적 토큰 바인딩
-* **SPIFFE ID 기반 워크로드 식별**:
-  - 각 에이전트는 SPIFFE 표준 기반의 고유한 X.509 인증서(SVID)를 런타임에 직접 발급받습니다.
-  - 서비스 계정 키 파일과 같은 영구 정적 시크릿 생성을 원천 차단합니다.
-* **DPoP (Demonstrating Proof-of-Possession) & mTLS**:
-  - 에이전트가 Google Cloud API 또는 외부 리소스에 접근할 때 발급받는 OAuth 액세스 토큰은 에이전트 고유의 개인키에 암호학적으로 바인딩(DPoP)됩니다.
-  - 메모리 덤프나 로그 노출을 통해 토큰이 탈취되더라도, 해당 개인키를 소유하지 않은 타 인스턴스에서는 토큰을 사용할 수 없습니다.
-* **Principal Access Boundary (PAB)**:
-  - Agent Identity에 PAB 정책을 적용하여, 해당 에이전트가 호출할 수 있는 조직 내 리소스의 물리적 바운더리를 제한합니다.
-
-#### B. Dual Authority 모델 및 Auth Manager
-Agent Identity는 두 가지 권한 부여 모델을 명확히 분리합니다:
-
-| 구분 | Authority 모델 | 인증 메커니즘 | 주 사용처 |
-| :--- | :--- | :--- | :--- |
-| **Agent 고유 권한** | Agent's Own Authority | SPIFFE mTLS / DPoP | 시스템 인프라 접근, 내부 지식 검색(Vector Search), 플랫폼 관리 API 호출 |
-| **사용자 위임 권한** | User-Delegated Authority | 3-legged OAuth 2.0 | 사용자를 대신하여 Jira, GitHub, Slack, Google Drive/Calendar 등의 데이터 조회/수정 |
-
-* **자격증명 제로 노출(Zero-Exposure Credential Architecture)**:
-  - 사용자의 3-legged OAuth 토큰은 **Agent Identity Auth Manager**에 의해 강력하게 암호화되어 관리됩니다.
-  - 에이전트 코드 및 LLM 런타임 메모리에는 원시 토큰(Raw Token)이 노출되지 않으며, 오직 **Agent Gateway**를 통과하는 시점에 게이트웨이 인프라가 토큰을 안전하게 주입(Decryption & Injection)합니다. 에이전트가 탈옥(Jailbreak)되더라도 사용자 자격증명 유출이 불가능합니다.
+#### A. Service Account Impersonation 및 OIDC ID 토큰
+* **에이전트 페르소나 격리**:
+  - 에이전트는 기동 시 환경 변수에 하드코딩된 API Key나 장기 Service Account Key를 갖지 않습니다.
+  - Agent Runtime은 IAM Credentials API를 통해 지정된 MCP Invoker 서비스 계정을 임퍼소네이션(`impersonated_credentials.IDTokenCredentials`)하여 단기 OIDC ID 토큰을 실시간 발급받습니다.
+* **최소 권한의 원칙**:
+  - 발급된 ID 토큰은 호출 대상 Cloud Run MCP 서비스로의 인증에만 유효하도록 Audience가 엄격히 제한됩니다.
+  - 이를 통해 특정 도구가 탈취되더라도 타 클라우드 리소스로의 비인가 접근이 원천적으로 차단됩니다.
 
 ---
 
