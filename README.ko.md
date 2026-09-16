@@ -155,7 +155,7 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 
 ## 🔬 5대 실증 데모 시나리오 (Live Scenarios Breakdown)
 
-사용자가 브라우저([대출 심사관 Web UI](https://mortgage-agent-ui-49152802892.us-central1.run.app)) 또는 터미널 CLI를 통해 실시간 검증할 수 있는 5대 엔터프라이즈 거버넌스 시나리오입니다:
+사용자가 브라우저([대출 심사관 Web UI](src/web-ui)) 또는 터미널 CLI를 통해 실시간 검증할 수 있는 5대 엔터프라이즈 거버넌스 시나리오입니다:
 
 | 시나리오 | 사용자 질의 예시 | 에이전트 판단 (Tool Call) | Agent Gateway / 보안 인터셉션 동작 | 반환 상태 코드 | 사용자 최종 응답 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -171,7 +171,7 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 
 본 프로젝트는 CLI 명령어뿐만 아니라, 누구나 브라우저에서 직관적으로 Agent Gateway의 4대 핵심 축을 직접 체험할 수 있도록 **Cloud Run 기반 대화형 웹 UI 포털(`src/web-ui`)**을 기본 제공합니다.
 
-* **🌐 라이브 데모 접속 URL**: [https://mortgage-agent-ui-49152802892.us-central1.run.app](https://mortgage-agent-ui-49152802892.us-central1.run.app)
+* **🌐 포털 배포 엔드포인트**: Step 6 실행 시 Cloud Run 엔드포인트 자동 생성 (`https://mortgage-agent-ui-${PROJECT_NUMBER}.${REGION}.run.app`)
 * **주요 기능**:
   1. **원클릭 5대 시나리오 리본**: 상단 버튼 클릭만으로 정상 조회, 403 차단, 탈옥 방어, 인젝션 방어 즉시 재현.
   2. **Architecture: Before vs After 모달**: Agent Gateway 없이 직접 연결했을 때의 4대 보안 위험과 게이트웨이 도입 효과 비교.

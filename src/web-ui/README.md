@@ -21,9 +21,9 @@ Interactive demo Web UI portal for the **Gemini Enterprise Agent Platform** mort
 
 | Variable | Description | Example |
 | :--- | :--- | :--- |
-| `GOOGLE_CLOUD_PROJECT` | GCP project ID where the Reasoning Engine is deployed | `jhlee1` |
+| `GOOGLE_CLOUD_PROJECT` | GCP project ID where the Reasoning Engine is deployed | `<your-project-id>` |
 | `GOOGLE_CLOUD_LOCATION` | GCP region for the Reasoning Engine and Vertex AI | `us-central1` |
-| `REASONING_ENGINE_RESOURCE` | Full resource path of the deployed Vertex AI Reasoning Engine | `projects/49152802892/locations/us-central1/reasoningEngines/3827001403323187200` |
+| `REASONING_ENGINE_RESOURCE` | Full resource path of the deployed Vertex AI Reasoning Engine | `projects/<project-number>/locations/us-central1/reasoningEngines/<agent-id>` |
 | `PORT` | Web server listening port (default: `8080`) | `8080` |
 
 ## Local Development

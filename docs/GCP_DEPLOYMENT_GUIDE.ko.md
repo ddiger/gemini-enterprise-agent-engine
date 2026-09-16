@@ -393,7 +393,7 @@ gcloud run deploy mortgage-agent-ui \
 ```
 
 #### 2. 웹 브라우저에서 접속 및 원클릭 시나리오 검증
-* 출력된 Cloud Run URL(예: `https://mortgage-agent-ui-49152802892.us-central1.run.app`)을 브라우저에서 엽니다.
+* 출력된 Cloud Run URL(예: `https://mortgage-agent-ui-${PROJECT_NUMBER}.${REGION}.run.app`)을 브라우저에서 엽니다.
 * 상단 리본 메뉴의 5대 원클릭 테스트 시나리오를 클릭하여 검증합니다:
   * **1. [정상] 서류 요약 & 소득 검증**: Sterling 가족 2023-2024 세금 신고서 요약 및 실시간 Cloud DLP SSN 마스킹 배지(`[US_SOCIAL_SECURITY_NUMBER]`) 확인.
   * **2. [차단] 외부 개인메일 유출 시도**: attacker@external.com 전송 시 Agent Gateway IAP ReadOnlyToolsOnly 정책에 의한 403 Forbidden 강제 차단 확인.

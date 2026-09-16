@@ -35,23 +35,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "jhlee1")
+PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
 LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
-RE_RESOURCE = os.environ.get(
-    "REASONING_ENGINE_RESOURCE",
-    "projects/49152802892/locations/us-central1/reasoningEngines/3827001403323187200",
-)
+RE_RESOURCE = os.environ.get("REASONING_ENGINE_RESOURCE", "")
 
-print(f"Initializing Vertex AI with project={PROJECT_ID}, location={LOCATION}...")
-vertexai.init(project=PROJECT_ID, location=LOCATION)
+if PROJECT_ID and LOCATION:
+    print(f"Initializing Vertex AI with project={PROJECT_ID}, location={LOCATION}...")
+    vertexai.init(project=PROJECT_ID, location=LOCATION)
+else:
+    print("Notice: GOOGLE_CLOUD_PROJECT not set. Vertex AI initialization will be deferred.")
 
 agent = None
-try:
-    print(f"Loading Reasoning Engine: {RE_RESOURCE}...")
-    agent = reasoning_engines.ReasoningEngine(RE_RESOURCE)
-    print("Reasoning Engine loaded successfully!")
-except Exception as e:
-    print(f"Warning: Failed to load Reasoning Engine during startup: {e}")
+if RE_RESOURCE:
+    try:
+        print(f"Loading Reasoning Engine: {RE_RESOURCE}...")
+        agent = reasoning_engines.ReasoningEngine(RE_RESOURCE)
+        print("Reasoning Engine loaded successfully!")
+    except Exception as e:
+        print(f"Warning: Failed to load Reasoning Engine during startup: {e}")
+else:
+    print("Notice: REASONING_ENGINE_RESOURCE not set. Agent will be loaded dynamically on request.")
 
 class ChatRequest(BaseModel):
     message: str
@@ -71,6 +74,13 @@ def health_check():
 async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[str, None]:
     global agent
     if agent is None:
+        if not RE_RESOURCE:
+            err_data = json.dumps({
+                "type": "error",
+                "message": "REASONING_ENGINE_RESOURCE 환경변수가 설정되지 않았습니다. Cloud Run 환경변수를 확인해주세요."
+            })
+            yield f"data: {err_data}\n\n"
+            return
         try:
             agent = reasoning_engines.ReasoningEngine(RE_RESOURCE)
         except Exception as e:
@@ -187,7 +197,8 @@ async def chat_stream_endpoint(req: ChatRequest):
 
 @app.get("/", response_class=HTMLResponse)
 def index_page():
-    return HTML_CONTENT.replace("{{PROJECT_ID}}", PROJECT_ID).replace("{{LOCATION}}", LOCATION)
+    display_project = PROJECT_ID if PROJECT_ID else "YOUR_PROJECT_ID"
+    return HTML_CONTENT.replace("{{PROJECT_ID}}", display_project).replace("{{LOCATION}}", LOCATION)
 
 HTML_CONTENT = """<!DOCTYPE html>
 <html lang="ko" class="h-full">
@@ -315,7 +326,6 @@ HTML_CONTENT = """<!DOCTYPE html>
       <button onclick="openModal('arch-modal')" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-indigo-50 to-blue-50 text-indigo-700 border border-indigo-200/90 hover:border-indigo-300 hover:shadow-xs transition">
         <i class="fa-solid fa-layer-group text-indigo-600"></i>
         <span>Architecture: Before vs After</span>
-        <span class="px-1.5 py-0.2 bg-indigo-600 text-white rounded text-[10px]">L300</span>
       </button>
 
       <!-- Cloud Observability Links Modal Trigger -->
@@ -394,7 +404,6 @@ HTML_CONTENT = """<!DOCTYPE html>
               <div>
                 <h2 class="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                   <span>엔터프라이즈 모기지 심사 에이전트 포털</span>
-                  <span class="text-[11px] font-semibold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Level 300/400</span>
                 </h2>
                 <p class="text-xs text-slate-600 mt-1 leading-relaxed max-w-3xl">
                   본 포털은 <strong>Vertex AI Reasoning Engine</strong>과 <strong>Agent Gateway(Managed Envoy L7)</strong>를 실제 프로덕션 인프라로 연동한 실증 데모 환경입니다.
@@ -467,7 +476,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         </form>
         <div class="flex items-center justify-between mt-2.5 px-1 text-[11px] text-slate-400 font-mono">
           <span>인증 주체: <code class="text-slate-600 font-bold">loan-officer-1@bank.internal</code></span>
-          <span>Gateway: <code class="text-slate-600 font-bold">projects/{{PROJECT_ID}}/locations/{{LOCATION}}/agentGateways/agent-gateway</code></span>
+          <span>Gateway: <code class="text-slate-600 font-bold">agent-gateway (L7 Managed Envoy)</code></span>
         </div>
       </div>
 
@@ -566,7 +575,7 @@ api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''</pre>
       <!-- Tab Content 3: Observability Links -->
       <div id="inspector-tab-observability" class="flex-1 overflow-y-auto p-4 space-y-3 text-xs custom-scrollbar hidden">
         <div class="text-[11px] text-slate-500 mb-2">
-          아래 링크를 클릭하면 Google Cloud Console의 실제 로그 탐색기 및 트레이스 화면으로 바로 이동합니다 (Project: <code class="font-bold text-slate-700">{{PROJECT_ID}}</code>):
+          아래 링크를 클릭하면 Google Cloud Console의 실제 로그 탐색기 및 트레이스 화면으로 바로 이동합니다:
         </div>
 
         <a href="https://console.cloud.google.com/logs/query;query=logName%3D%22projects%2F{{PROJECT_ID}}%2Flogs%2Fmodelarmor.googleapis.com%252Fsanitize_operations%22?project={{PROJECT_ID}}" target="_blank" class="p-3.5 rounded-xl bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition flex items-center justify-between group">
@@ -766,7 +775,7 @@ api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''</pre>
 
       <div class="p-6 space-y-3 text-xs">
         <p class="text-slate-600 mb-3">
-          현재 프로젝트(<code>{{PROJECT_ID}}</code>)에서 발생하는 실시간 L7 게이트웨이 및 보안 이벤트를 콘솔에서 직접 확인하실 수 있습니다:
+          Google Cloud Console에서 실시간 L7 게이트웨이 및 보안 이벤트를 직접 확인하실 수 있습니다:
         </p>
 
         <a href="https://console.cloud.google.com/logs/query;query=logName%3D%22projects%2F{{PROJECT_ID}}%2Flogs%2Fmodelarmor.googleapis.com%252Fsanitize_operations%22?project={{PROJECT_ID}}" target="_blank" class="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition flex items-center justify-between group">

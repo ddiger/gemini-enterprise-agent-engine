@@ -48,7 +48,7 @@ def run_query(agent, prompt: str, user_id: str = "loan-officer-1"):
 
 def main():
     parser = argparse.ArgumentParser(description="Live scenario verification test for Gemini Enterprise Agent Engine.")
-    parser.add_argument("--project", default=os.environ.get("GOOGLE_CLOUD_PROJECT", "jhlee1"), help="GCP Project ID")
+    parser.add_argument("--project", default=os.environ.get("GOOGLE_CLOUD_PROJECT", ""), required=not os.environ.get("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
     parser.add_argument("--region", default=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
     parser.add_argument("--resource-name", required=True, help="Reasoning Engine resource name (e.g. projects/.../locations/.../reasoningEngines/...)")
     args = parser.parse_args()

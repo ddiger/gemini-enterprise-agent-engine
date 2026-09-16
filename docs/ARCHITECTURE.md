@@ -1,4 +1,4 @@
-# Gemini Enterprise Agent Engine: 심층 아키텍처 개요 (Level 300/400)
+# Gemini Enterprise Agent Engine: 심층 엔터프라이즈 아키텍처 기술 백서
 
 ## 1. 개요 및 플랫폼 진화 (Evolution & "Shift Down" Architecture)
 
@@ -99,7 +99,7 @@ flowchart TD
    - 에이전트가 외부 도구(MCP 서버), 사내 데이터베이스, 타 에이전트, 서드파티 SaaS API를 호출할 때 경유.
    - 아웃바운드 mTLS 핸드셰이크 자동화, MCP(JSON-RPC) 및 A2A 메시지 인터셉션, 자격증명 복호화 주입, 데이터 유출 방지(DLP) 인라인 검사.
 
-#### B. Level 400 엔터프라이즈 네트워킹 & 인프라 패턴
+#### B. 심층 엔터프라이즈 네트워킹 & 인프라 패턴
 * **프로토콜 네이티브 인터셉션**:
   - 단순 HTTP 전달이 아닌, **Model Context Protocol (MCP)** 및 **Agent-to-Agent (A2A)** 프로토콜을 L7 레벨에서 파싱하여 도구 호출 파라미터(`tools/call`) 및 에이전트 스킬 요청을 심층 분석.
 * **VPC Service Controls (VPC-SC) 및 PSC Interface 연동**:
@@ -327,9 +327,9 @@ flowchart TD
 
 ### 7.3. 실시간 인터랙티브 포털 및 관측성 리소스
 
-- **라이브 대출 심사관 Web UI 포털**: `https://mortgage-agent-ui-49152802892.us-central1.run.app`
+- **대출 심사관 Web UI 포털 엔드포인트**: `https://mortgage-agent-ui-${PROJECT_NUMBER}.${REGION}.run.app` (Cloud Run 배포 시 자동 생성)
 - **Cloud Logging 딥링크**:
-  - Model Armor 차단 로그: `logName:"projects/jhlee1/logs/modelarmor.googleapis.com%2Fsanitize_operations"`
+  - Model Armor 차단 로그: `logName:"projects/${PROJECT_ID}/logs/modelarmor.googleapis.com%2Fsanitize_operations"`
   - Gateway 트래픽 로그: `resource.type="networkservices.googleapis.com/Gateway"`
 - **Cloud Trace Explorer**: 요청별 `Agent Runtime -> Agent Gateway -> IAP/Model Armor -> Cloud Run FastMCP` 전 구간 레이턴시 및 분산 추적.
 

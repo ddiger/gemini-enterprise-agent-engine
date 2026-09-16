@@ -152,7 +152,7 @@ As requests traverse the managed Envoy proxy, two Service Extension callouts are
 
 ## 🔬 Live Scenario Breakdown (5 Verification Scenarios)
 
-The repository provides 5 enterprise governance scenarios that can be tested in real-time via the [Loan Officer Web UI Portal](https://mortgage-agent-ui-49152802892.us-central1.run.app) or terminal CLI:
+The repository provides 5 enterprise governance scenarios that can be tested in real-time via the [Loan Officer Web UI Portal](src/web-ui) or terminal CLI:
 
 | Scenario | User Prompt | Agent Tool Call | Agent Gateway / Security Interception | Response Code | Final Client Output |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -168,7 +168,7 @@ The repository provides 5 enterprise governance scenarios that can be tested in 
 
 In addition to CLI testing, this repository provides a dedicated, production-ready **Cloud Run Web UI Portal (`src/web-ui`)** for interactive demonstrations.
 
-* **🌐 Live Portal URL**: [https://mortgage-agent-ui-49152802892.us-central1.run.app](https://mortgage-agent-ui-49152802892.us-central1.run.app)
+* **🌐 Portal Deployment**: Cloud Run URL generated in Step 6 (`https://mortgage-agent-ui-${PROJECT_NUMBER}.${REGION}.run.app`)
 * **Key Features**:
   1. **One-Click 5 Scenario Ribbon**: Instantly trigger positive flows, 403 blocks, jailbreak refusals, and injection defenses.
   2. **Architecture: Before vs After Modal**: Visual side-by-side comparison of Direct Cloud Run risks vs Agent Gateway solutions.
