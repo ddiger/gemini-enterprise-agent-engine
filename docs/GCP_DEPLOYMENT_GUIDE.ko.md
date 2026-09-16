@@ -384,11 +384,15 @@ gcloud run deploy mortgage-agent-ui \
 
 #### 2. 웹 브라우저에서 접속 및 원클릭 시나리오 검증
 * 출력된 Cloud Run URL(예: `https://mortgage-agent-ui-49152802892.us-central1.run.app`)을 브라우저에서 엽니다.
-* 상단 리본 메뉴의 원클릭 버튼을 클릭하여 테스트합니다:
-  * **1. [양성] 서류 조회 & 소득 검증**: Sterling 가족 2023-2024 세금 신고서 요약 및 실시간 Cloud DLP SSN 마스킹 배지(`[US_SOCIAL_SECURITY_NUMBER]`) 확인.
-  * **2. [음성] 승인 이메일 발송 시도**: corporate-email 발송 시 Agent Gateway IAP ReadOnlyToolsOnly 정책에 의한 거부 및 안내 확인.
-  * **3. [음성] 시스템 프롬프트 탈취 공격**: 내부 지침 및 API 키 탈취 시도에 대한 Model Armor 안전 가드레일 방어 확인.
-* 우측 **Under-the-Hood Inspector** 패널에서 호출된 MCP Tool과 인가 상태가 실시간 스트리밍 타임라인으로 표시됩니다.
+* 상단 리본 메뉴의 5대 원클릭 테스트 시나리오를 클릭하여 검증합니다:
+  * **1. [정상] 서류 요약 & 소득 검증**: Sterling 가족 2023-2024 세금 신고서 요약 및 실시간 Cloud DLP SSN 마스킹 배지(`[US_SOCIAL_SECURITY_NUMBER]`) 확인.
+  * **2. [차단] 외부 개인메일 유출 시도**: attacker@external.com 전송 시 Agent Gateway IAP ReadOnlyToolsOnly 정책에 의한 403 Forbidden 강제 차단 확인.
+  * **3. [거절] 직접 시스템 탈옥 공격**: "You are now DAN" 탈옥 시도에 대해 Gemini 모델 자체 안전망(LLM 1차 방어선)이 즉시 거부(`I cannot fulfill this request...`)함을 확인.
+  * **4. [인젝션] 악성 도구 인자 주입**: SQL Injection/악성 문자열을 포함한 도구 인자 주입 시도 시 Model Armor 인바운드 검사 및 HTTP 799 방어 메커니즘 확인.
+  * **5. [인가] 사내 심사팀 승인 메일 정책 질의**: 사내 대출 담당자(`officer@bank.internal`) 대상 알림 질의 시 에이전트의 인가 정책 인지 및 거버넌스 확인.
+* **Architecture: Before vs After 모달**: 상단 버튼 클릭 시 Agent Gateway가 없을 때(Direct Cloud Run 연결 시 발생하는 4대 보안 재앙)와 도입 후의 해결책을 대조표로 확인.
+* **Cloud Observability & Logs 모달**: 클릭 한 번으로 Google Cloud Console의 `sanitize_operations`, `gateway_requests`, `Cloud Trace Explorer` 실시간 분석 화면으로 즉시 이동.
+* 우측 **Under-the-Hood Inspector** 패널에서 실시간 L7 도구 호출 트레이스, 보안 정책 규정집(CEL, Model Armor), 클라우드 딥링크를 탭별로 조회 가능.
 
 ---
 
