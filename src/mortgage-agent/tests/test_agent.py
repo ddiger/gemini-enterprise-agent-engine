@@ -293,7 +293,8 @@ class TestConnectionTimeoutNoMutation:
             result = _discover_mcp_toolsets()
 
         assert result == [toolset]
-        assert conn_params.timeout == 5.0
+        # FastMCP Cloud Run services require 30.0s timeout to prevent cold-start failures
+        assert conn_params.timeout == 30.0
         # Unprefixed tool names from the registry payload land in
         # DISCOVERED_MCP_SERVERS so the instruction renderer can enumerate
         # exact names (preventing hallucination).

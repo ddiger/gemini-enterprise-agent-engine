@@ -253,7 +253,7 @@ export REGION="us-central1"
 
 gcloud config set project ${PROJECT_ID}
 export PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format="value(projectNumber)")
-export ORG_ID=$(gcloud projects describe ${PROJECT_ID} --format="value(parent.id)")
+export ORG_ID=$(gcloud projects get-ancestors ${PROJECT_ID} --format="csv[no-heading](id,type)" | awk -F',' '$2=="organization"{print $1}')
 
 # [Optional] If customizing VPC / subnet:
 # export VPC_NAME="custom-vpc"
@@ -311,7 +311,18 @@ cd ../..
   --condition-title "ReadOnlyToolsOnly" \
   --condition-description "Restrict ${AGENT_ID} to read-only tools on corporate-email"
 
+# Switch IAP Policy to ENFORCE mode (remove DRY_RUN to enforce 403 Forbidden)
+cd terraform
+sed -i 's/agent_gateway_iap_iam_enforcement_mode = "DRY_RUN"/agent_gateway_iap_iam_enforcement_mode = null/g' terraform.tfvars
+terraform apply -auto-approve
+cd ..
+
 # 6. Deploy Interactive Loan Officer Web UI Portal
+# Grant UI service account permission to call Vertex AI Reasoning Engine
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
+
 gcloud run deploy mortgage-agent-ui \
   --source src/web-ui \
   --region=${REGION} \

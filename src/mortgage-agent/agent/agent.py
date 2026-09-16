@@ -377,7 +377,11 @@ def _find_http_status_error(exc: BaseException, status_code: int) -> bool:
             queue.append(current.__cause__)
         if current.__context__ is not None:
             queue.append(current.__context__)
-        if isinstance(current, _BaseExceptionGroup):
+        if hasattr(current, "exceptions"):
+            exceptions_val = getattr(current, "exceptions")
+            if isinstance(exceptions_val, (list, tuple)):
+                queue.extend(exceptions_val)
+        elif isinstance(current, _BaseExceptionGroup):
             queue.extend(current.exceptions)
     return False
 

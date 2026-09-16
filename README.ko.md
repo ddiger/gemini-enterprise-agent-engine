@@ -259,7 +259,7 @@ export REGION="us-central1"
 
 gcloud config set project ${PROJECT_ID}
 export PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format="value(projectNumber)")
-export ORG_ID=$(gcloud projects describe ${PROJECT_ID} --format="value(parent.id)")
+export ORG_ID=$(gcloud projects get-ancestors ${PROJECT_ID} --format="csv[no-heading](id,type)" | awk -F',' '$2=="organization"{print $1}')
 
 # [선택 사항] 사용자 정의 VPC 및 서브넷 사용 시:
 # export VPC_NAME="custom-vpc"
@@ -317,7 +317,19 @@ cd ../..
   --condition-title "ReadOnlyToolsOnly" \
   --condition-description "Restrict ${AGENT_ID} to read-only tools on corporate-email"
 
+# IAP 정책 Enforcement 모드 활성화 (DRY_RUN 해제하여 실제 403 차단 적용)
+cd terraform
+sed -i 's/agent_gateway_iap_iam_enforcement_mode = "DRY_RUN"/agent_gateway_iap_iam_enforcement_mode = null/g' terraform.tfvars
+terraform apply -auto-approve
+cd ..
+
 # 6. 대출 심사관 인터랙티브 Web UI 포털 배포 (Cloud Run)
+# 1) UI 서비스 계정에 Vertex AI Reasoning Engine 호출 권한 부여
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
+
+# 2) Cloud Run 서비스 배포
 gcloud run deploy mortgage-agent-ui \
   --source src/web-ui \
   --region=${REGION} \

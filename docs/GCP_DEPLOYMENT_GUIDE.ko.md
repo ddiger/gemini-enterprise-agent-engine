@@ -77,7 +77,7 @@ flowchart TD
    - Workload Identity Federation 및 Agent Gateway 바인딩에 필요한 **GCP Organization ID (12자리 숫자)**
 2. **로컬 개발 도구 설치**:
    - `gcloud` (Google Cloud SDK >= 500.0.0)
-   - `terraform` (>= 1.5.0)
+   - `terraform` (>= 1.12.2)
    - `skaffold` (>= 2.10.0) - 컨테이너 자동 빌드 및 Cloud Run 배포용
    - `uv` (Fast Python 패키지 매니저) 및 `python3` (>= 3.12)
    - `jq`, `envsubst`, `sed` (리눅스/맥 기본 유틸리티)
@@ -95,10 +95,9 @@ export REGION="us-central1"
 
 gcloud config set project ${PROJECT_ID}
 
-# 프로젝트 번호 및 조직 ID 자동 추출
+# 프로젝트 번호 및 조직 ID 자동 추출 (폴더 하위 프로젝트도 안전하게 상위 조직 ID 추출)
 export PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format="value(projectNumber)")
-# 프로젝트가 조직 바로 아래에 위치하는 경우 parent.id 추출 (폴더 하위인 경우 직접 12자리 조직 번호 입력)
-export ORG_ID=$(gcloud projects describe ${PROJECT_ID} --format="value(parent.id)")
+export ORG_ID=$(gcloud projects get-ancestors ${PROJECT_ID} --format="csv[no-heading](id,type)" | awk -F',' '$2=="organization"{print $1}')
 
 # [선택 사항: 사용자 정의 VPC 및 서브넷 사용 시]
 # 기본값 대신 기존 사내 VPC나 사용자 정의 CIDR 대역을 사용하고자 할 경우 설정합니다:
@@ -174,14 +173,19 @@ Terraform 출력을 바탕으로 Cloud Run 매니페스트를 렌더링하고 Sk
 # 1. Cloud Run 인그레스 환경 변수 추출
 export MCP_INGRESS=$(cd terraform && terraform output -raw mcp_cloud_run_ingress_annotation)
 
-# 2. Skaffold 및 Cloud Run 템플릿 렌더링
+# 2. Skaffold 및 FastMCP Cloud Run 템플릿 렌더링
 envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRESS}' < skaffold.yaml.tmpl > skaffold.yaml
-for f in cloudrun/*.yaml.tmpl; do
+for f in cloudrun/legacy-dms.yaml.tmpl cloudrun/income-verification-api.yaml.tmpl cloudrun/corporate-email.yaml.tmpl; do
   envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRESS}' < "$f" > "${f%.tmpl}"
 done
 
 # 3. 현재 계정에 Service Account 사용 권한 부여 (Cloud Run 배포용)
-gcloud projects add-iam-policy-binding ${PROJECT_ID}   --member="user:$(gcloud config get-value account)"   --role="roles/iam.serviceAccountUser"
+ACTIVE_ACCOUNT=$(gcloud config get-value account)
+MEMBER_PREFIX="user"
+if [[ "${ACTIVE_ACCOUNT}" == *"gserviceaccount.com"* ]]; then MEMBER_PREFIX="serviceAccount"; fi
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="${MEMBER_PREFIX}:${ACTIVE_ACCOUNT}" \
+  --role="roles/iam.serviceAccountUser"
 
 # 4. Skaffold로 컨테이너 빌드 및 Cloud Run 배포 실행 (약 3~5분 소요)
 skaffold run
@@ -324,10 +328,10 @@ curl -X POST \
 ---
 
 ### [테스트 4] 터미널에서 CLI로 즉시 E2E 검증하기
-웹 브라우저 없이 터미널에서 Python Vertex AI SDK를 통해 두 테스트를 한 번에 검증할 수 있습니다:
+웹 브라우저 없이 터미널에서 Python Vertex AI SDK를 통해 두 테스트를 한 번에 검증할 수 있습니다 (가상환경의 `vertexai` SDK 활용):
 
 ```bash
-python3 -c "
+uv --directory src/mortgage-agent run python -c "
 import vertexai
 from vertexai.preview import reasoning_engines
 
@@ -370,12 +374,18 @@ CLI나 스크립트 대신, 실제 브라우저에서 대출 심사관(Loan Offi
 
 #### 1. Web UI Cloud Run 배포
 ```bash
+# 1) Web UI 실행 서비스 계정에 Vertex AI Reasoning Engine 호출 권한 부여
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
+
+# 2) Cloud Run에 Web UI 포털 배포
 gcloud run deploy mortgage-agent-ui \
   --source src/web-ui \
   --region=${REGION} \
   --project=${PROJECT_ID} \
   --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},REASONING_ENGINE_RESOURCE=${RE_RESOURCE} \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},REASONING_ENGINE_RESOURCE=projects/${PROJECT_NUMBER}/locations/${REGION}/reasoningEngines/${AGENT_ID} \
   --allow-unauthenticated \
   --port 8080 \
   --memory 1Gi \
@@ -401,8 +411,14 @@ gcloud run deploy mortgage-agent-ui \
 실습이 끝난 후 불필요한 과금을 방지하기 위해 리소스를 역순으로 정리합니다.
 
 ```bash
-# 1. Vertex AI Reasoning Engine 에이전트 런타임 삭제
-gcloud beta ai reasoning-engines delete ${AGENT_ID}   --region=${REGION}   --quiet
+# 1. Vertex AI Reasoning Engine 에이전트 런타임 삭제 (Python SDK)
+uv --directory src/mortgage-agent run python -c "
+import vertexai
+from vertexai.preview import reasoning_engines
+vertexai.init(project='${PROJECT_ID}', location='${REGION}')
+reasoning_engines.ReasoningEngine('projects/${PROJECT_NUMBER}/locations/${REGION}/reasoningEngines/${AGENT_ID}').delete()
+print('Reasoning Engine deleted successfully.')
+"
 
 # 2. Terraform 프로비저닝 리소스 전체 삭제
 cd terraform
