@@ -434,9 +434,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                   </div>
                   <div class="p-2.5 rounded-lg bg-white border border-slate-200/80 shadow-2xs">
                     <div class="font-bold text-slate-800 flex items-center gap-1.5">
-                      <i class="fa-solid fa-envelope-shield text-rose-600"></i> Corporate Email
+                      <i class="fa-solid fa-envelope text-rose-600"></i> Corporate Email
                     </div>
-                    <div class="text-[11px] text-slate-500 mt-0.5">IAP CEL 쓰기 격리 (403)</div>
+                    <div class="text-[11px] text-slate-500 mt-0.5">send_email 쓰기 차단 (403: ReadOnly)</div>
                   </div>
                   <div class="p-2.5 rounded-lg bg-white border border-slate-200/80 shadow-2xs">
                     <div class="font-bold text-slate-800 flex items-center gap-1.5">
