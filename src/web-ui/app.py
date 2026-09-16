@@ -578,11 +578,12 @@ HTML_CONTENT = """<!DOCTYPE html>
 
               } else if (event.type === "text") {
                 fullRawText += event.text;
-                let formatted = fullRawText
-                  .replace(/\\[US_SOCIAL_SECURITY_NUMBER\\]/g, '<span class="dlp-highlight"><i class="fa-solid fa-lock text-[11px] mr-1"></i>[US_SOCIAL_SECURITY_NUMBER]</span>')
-                  .replace(/403 Forbidden/g, '<span class="forbidden-highlight"><i class="fa-solid fa-ban text-[11px] mr-1"></i>403 Forbidden</span>');
+                let html = marked.parse(fullRawText);
+                html = html
+                  .replace(/(?:<code>)?\\[US_SOCIAL_SECURITY_NUMBER\\](?:<\\/code>)?/g, '<span class="dlp-highlight"><i class="fa-solid fa-lock text-[11px] mr-1"></i>[US_SOCIAL_SECURITY_NUMBER]</span>')
+                  .replace(/(?:<code>)?403 Forbidden(?:<\\/code>)?/g, '<span class="forbidden-highlight"><i class="fa-solid fa-ban text-[11px] mr-1"></i>403 Forbidden</span>');
                 
-                contentEl.innerHTML = marked.parse(formatted);
+                contentEl.innerHTML = html;
 
               } else if (event.type === "done") {
                 statusEl.innerHTML = `<span class="text-emerald-600"><i class="fa-solid fa-circle-check"></i> 완료 (${event.elapsed_seconds}초 소요)</span>`;
