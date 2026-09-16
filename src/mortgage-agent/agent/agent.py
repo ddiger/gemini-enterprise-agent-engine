@@ -31,63 +31,106 @@ logger = logging.getLogger(__name__)
 
 def _setup_gateway_ca():
     """Ensure Agent Gateway TLS inspection root certificates are trusted across all HTTP/TLS clients."""
-    potential_ca_files = [
-        os.environ.get("AGENT_GATEWAY_CA_FILE"),
-        "/code/agent_gateway_ca.crt",
-        os.path.join(os.path.dirname(__file__), "agent_gateway_ca.crt"),
+    potential_bundles = [
+        os.environ.get("SSL_CERT_FILE"),
+        "/code/ca_bundle.pem",
+        os.path.join(os.path.dirname(__file__), "ca_bundle.pem"),
+        "/code/user_code/ca_bundle.pem",
     ]
-    ca_path = None
-    for p in potential_ca_files:
-        if p and os.path.exists(p) and not p.endswith("ca_bundle.pem"):
-            ca_path = p
+    bundle_path = None
+    for p in potential_bundles:
+        if p and os.path.exists(p) and os.path.getsize(p) > 2000:
+            bundle_path = p
             break
 
-    if not ca_path:
-        return
+    if not bundle_path:
+        potential_ca_files = [
+            os.environ.get("AGENT_GATEWAY_CA_FILE"),
+            "/code/agent_gateway_ca.crt",
+            os.path.join(os.path.dirname(__file__), "agent_gateway_ca.crt"),
+            "/code/user_code/agent_gateway_ca.crt",
+        ]
+        ca_path = None
+        for p in potential_ca_files:
+            if p and os.path.exists(p) and not p.endswith("ca_bundle.pem"):
+                ca_path = p
+                break
 
-    bundle_path = "/code/ca_bundle.pem" if os.path.exists("/code") else "/tmp/ca_bundle.pem"
+        if not ca_path:
+            return
+
+        bundle_path = "/code/ca_bundle.pem" if os.path.exists("/code") else "/tmp/ca_bundle.pem"
+        try:
+            with open(ca_path, "r", encoding="utf-8") as f:
+                ca_cert_data = f.read().strip()
+
+            certifi_data = ""
+            try:
+                import certifi
+
+                with open(certifi.where(), "r", encoding="utf-8") as f:
+                    certifi_data = f.read()
+            except Exception as e:
+                logger.warning("certifi read failed: %s", e)
+
+            if not certifi_data or len(certifi_data) < 1000:
+                for sys_ca in ["/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt"]:
+                    if os.path.exists(sys_ca):
+                        try:
+                            with open(sys_ca, "r", encoding="utf-8") as f:
+                                certifi_data = f.read()
+                                break
+                        except Exception:
+                            pass
+
+            combined_bundle = certifi_data.strip() + "\n\n" + ca_cert_data + "\n"
+
+            try:
+                with open(bundle_path, "w", encoding="utf-8") as f:
+                    f.write(combined_bundle)
+            except Exception:
+                bundle_path = "/tmp/ca_bundle.pem"
+                with open(bundle_path, "w", encoding="utf-8") as f:
+                    f.write(combined_bundle)
+        except Exception as e:
+            logger.warning("Failed to configure Gateway CA: %s", e)
+            return
+
+    os.environ["SSL_CERT_FILE"] = bundle_path
+    os.environ["REQUESTS_CA_BUNDLE"] = bundle_path
+    os.environ["GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"] = bundle_path
+
     try:
         import certifi
 
-        certifi_cacert = certifi.where()
-        with open(ca_path, "r", encoding="utf-8") as f:
-            ca_cert_data = f.read().strip()
-
-        certifi_data = ""
-        try:
-            with open(certifi_cacert, "r", encoding="utf-8") as f:
-                certifi_data = f.read()
-        except Exception:
-            pass
-
-        # Build combined bundle: certifi root CAs + Gateway CA
-        combined_bundle = certifi_data
-        if ca_cert_data and ca_cert_data not in combined_bundle:
-            combined_bundle = combined_bundle + "\n" + ca_cert_data
-
-        try:
-            with open(bundle_path, "w", encoding="utf-8") as f:
-                f.write(combined_bundle)
-        except Exception:
-            bundle_path = "/tmp/ca_bundle.pem"
-            with open(bundle_path, "w", encoding="utf-8") as f:
-                f.write(combined_bundle)
-
-        os.environ["SSL_CERT_FILE"] = bundle_path
-        os.environ["REQUESTS_CA_BUNDLE"] = bundle_path
-        os.environ["GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"] = bundle_path
-
-        # Monkeypatch certifi.where so libraries like httpx pick up the combined bundle
         certifi.where = lambda: bundle_path
-        try:
-            import httpx._config
-            httpx._config.DEFAULT_CA_BUNDLE_PATH = bundle_path
-        except Exception:
-            pass
+    except Exception:
+        pass
 
-        logger.info("Configured Agent Gateway CA from %s into %s and certifi", ca_path, bundle_path)
+    try:
+        import httpx
+
+        _orig_client_init = httpx.Client.__init__
+
+        def _patched_client_init(self, *args, **kwargs):
+            if "verify" not in kwargs:
+                kwargs["verify"] = bundle_path
+            _orig_client_init(self, *args, **kwargs)
+
+        httpx.Client.__init__ = _patched_client_init
+
+        _orig_async_client_init = httpx.AsyncClient.__init__
+
+        def _patched_async_client_init(self, *args, **kwargs):
+            if "verify" not in kwargs:
+                kwargs["verify"] = bundle_path
+            _orig_async_client_init(self, *args, **kwargs)
+
+        httpx.AsyncClient.__init__ = _patched_async_client_init
     except Exception as e:
-        logger.warning("Failed to configure Gateway CA: %s", e)
+        logger.warning("Failed to patch httpx Client verify: %s", e)
+
+    logger.info("Configured CA bundle at %s and patched certifi/httpx", bundle_path)
 
 
 _setup_gateway_ca()

@@ -540,6 +540,18 @@ def main() -> None:
                 f.write(gateway_ca_cert)
             with open(os.path.join(staging_dir, "agent", "agent_gateway_ca.crt"), "w", encoding="utf-8") as f:
                 f.write(gateway_ca_cert)
+            try:
+                import certifi
+
+                with open(certifi.where(), "r", encoding="utf-8") as f:
+                    roots = f.read()
+                combined_bundle = roots.strip() + "\n\n" + gateway_ca_cert.strip() + "\n"
+                with open(os.path.join(staging_dir, "ca_bundle.pem"), "w", encoding="utf-8") as f:
+                    f.write(combined_bundle)
+                with open(os.path.join(staging_dir, "agent", "ca_bundle.pem"), "w", encoding="utf-8") as f:
+                    f.write(combined_bundle)
+            except Exception as e:
+                print(f"  Warning: could not pre-generate ca_bundle.pem: {e}")
 
         # Create installation_scripts/ with a workaround for the
         # platform bug where .venv/bin/python doesn't exist in the
@@ -572,15 +584,22 @@ def main() -> None:
             f.write("include-system-site-packages = true\n")
             f.write("PYCFG\n")
             f.write('echo "Created .venv virtualenv (site-packages: /code/.venv/lib/python${PY_VER}/site-packages)"\n')
-            f.write("if [ -f /code/agent_gateway_ca.crt ]; then\n")
-            f.write("    echo 'Found /code/agent_gateway_ca.crt; generating /code/ca_bundle.pem'\n")
+            f.write("if [ -f /code/ca_bundle.pem ]; then\n")
+            f.write("    chmod 666 /code/ca_bundle.pem 2>/dev/null || true\n")
+            f.write("elif [ -f /code/user_code/ca_bundle.pem ]; then\n")
+            f.write("    cp /code/user_code/ca_bundle.pem /code/ca_bundle.pem\n")
+            f.write("    chmod 666 /code/ca_bundle.pem 2>/dev/null || true\n")
+            f.write("elif [ -f /code/agent_gateway_ca.crt ] || [ -f /code/user_code/agent_gateway_ca.crt ]; then\n")
+            f.write("    CA_SRC=\"/code/agent_gateway_ca.crt\"\n")
+            f.write("    [ -f \"$CA_SRC\" ] || CA_SRC=\"/code/user_code/agent_gateway_ca.crt\"\n")
+            f.write("    echo \"Found $CA_SRC; generating /code/ca_bundle.pem\"\n")
             f.write("    CERTIFI_CA=$(python3 -m certifi 2>/dev/null || true)\n")
             f.write('    if [ -n "$CERTIFI_CA" ] && [ -f "$CERTIFI_CA" ]; then\n')
-            f.write('        cat "$CERTIFI_CA" /code/agent_gateway_ca.crt > /code/ca_bundle.pem\n')
+            f.write('        cat "$CERTIFI_CA" "$CA_SRC" > /code/ca_bundle.pem\n')
             f.write("    elif [ -f /etc/ssl/certs/ca-certificates.crt ]; then\n")
-            f.write("        cat /etc/ssl/certs/ca-certificates.crt /code/agent_gateway_ca.crt > /code/ca_bundle.pem\n")
+            f.write("        cat /etc/ssl/certs/ca-certificates.crt \"$CA_SRC\" > /code/ca_bundle.pem\n")
             f.write("    else\n")
-            f.write("        cp /code/agent_gateway_ca.crt /code/ca_bundle.pem\n")
+            f.write("        cp \"$CA_SRC\" /code/ca_bundle.pem\n")
             f.write("    fi\n")
             f.write("    chmod 666 /code/ca_bundle.pem 2>/dev/null || true\n")
             f.write("fi\n")
@@ -621,7 +640,7 @@ def main() -> None:
             extra_packages=[
                 "agent",
                 "installation_scripts/create_venv.sh",
-                *(["agent_gateway_ca.crt"] if gateway_ca_cert else []),
+                *(["agent_gateway_ca.crt", "ca_bundle.pem"] if gateway_ca_cert else []),
             ],
             build_options={
                 "installation_scripts": [
