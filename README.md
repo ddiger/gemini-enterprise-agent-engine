@@ -284,6 +284,11 @@ for f in cloudrun/*.yaml.tmpl; do envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRES
 gcloud projects add-iam-policy-binding ${PROJECT_ID} --member="user:$(gcloud config get-value account)" --role="roles/iam.serviceAccountUser"
 skaffold run
 
+# Keep backend MCP instances warm to avoid discovery cold-start timeouts
+for svc in legacy-dms income-verification corporate-email; do
+  gcloud run services update "$svc" --min-instances=1 --region=${REGION} --quiet
+done
+
 # 4. Deploy Mortgage Agent (Gemini 3.8 Flash) to Vertex AI Reasoning Engine
 cd src/mortgage-agent && uv sync
 uv run python deploy_agent.py \
@@ -302,7 +307,17 @@ cd ../..
 # 5. Apply IAP CEL Governance Policies (Allow Read, Deny External Email)
 ./scripts/grant_agent_mcp_egress.sh --mcp --agent-id ${AGENT_ID} --mcp-filter "legacy-dms income-verification"
 ./scripts/grant_agent_mcp_egress.sh --mcp --agent-id ${AGENT_ID} --mcp-filter "corporate-email" \
-  --condition-expression "api.getAttribute('iap.googleapis.com/mcp.toolName', '') in ['list_templates', '']" \
+  --condition-expression "api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''" \
   --condition-title "ReadOnlyToolsOnly" \
   --condition-description "Restrict ${AGENT_ID} to read-only tools on corporate-email"
+
+# 6. Deploy Interactive Loan Officer Web UI Portal
+gcloud run deploy mortgage-agent-ui \
+  --source src/web-ui \
+  --region=${REGION} \
+  --project=${PROJECT_ID} \
+  --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},REASONING_ENGINE_RESOURCE=projects/${PROJECT_NUMBER}/locations/${REGION}/reasoningEngines/${AGENT_ID} \
+  --allow-unauthenticated \
+  --port 8080 --memory 1Gi --cpu 1
 ```

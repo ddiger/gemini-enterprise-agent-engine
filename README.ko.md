@@ -290,6 +290,11 @@ for f in cloudrun/*.yaml.tmpl; do envsubst '${PROJECT_ID} ${REGION} ${MCP_INGRES
 gcloud projects add-iam-policy-binding ${PROJECT_ID} --member="user:$(gcloud config get-value account)" --role="roles/iam.serviceAccountUser"
 skaffold run
 
+# 백엔드 MCP 인스턴스 웜업 유지 (초기 5초 discovery 콜드스타트 타임아웃 방지)
+for svc in legacy-dms income-verification corporate-email; do
+  gcloud run services update "$svc" --min-instances=1 --region=${REGION} --quiet
+done
+
 # 4. Mortgage Agent (Gemini 3.8 Flash)를 Vertex AI Reasoning Engine에 배포
 cd src/mortgage-agent && uv sync
 uv run python deploy_agent.py \
@@ -308,7 +313,17 @@ cd ../..
 # 5. IAP Egress 정책 및 CEL 조건식 부여 (읽기 허용, 메일 쓰기 차단)
 ./scripts/grant_agent_mcp_egress.sh --mcp --agent-id ${AGENT_ID} --mcp-filter "legacy-dms income-verification"
 ./scripts/grant_agent_mcp_egress.sh --mcp --agent-id ${AGENT_ID} --mcp-filter "corporate-email" \
-  --condition-expression "api.getAttribute('iap.googleapis.com/mcp.toolName', '') in ['list_templates', '']" \
+  --condition-expression "api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''" \
   --condition-title "ReadOnlyToolsOnly" \
   --condition-description "Restrict ${AGENT_ID} to read-only tools on corporate-email"
+
+# 6. 대출 심사관 인터랙티브 Web UI 포털 배포 (Cloud Run)
+gcloud run deploy mortgage-agent-ui \
+  --source src/web-ui \
+  --region=${REGION} \
+  --project=${PROJECT_ID} \
+  --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},REASONING_ENGINE_RESOURCE=projects/${PROJECT_NUMBER}/locations/${REGION}/reasoningEngines/${AGENT_ID} \
+  --allow-unauthenticated \
+  --port 8080 --memory 1Gi --cpu 1
 ```
