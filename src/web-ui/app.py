@@ -120,26 +120,32 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
                         resp_str = json.dumps(response_data)
                         
                         has_dlp_mask = "[US_SOCIAL_SECURITY_NUMBER]" in resp_str
-                        is_error = (
-                            "error" in resp_str.lower()
-                            or "forbidden" in resp_str.lower()
-                            or "denied" in resp_str.lower()
-                            or "blocked" in resp_str.lower()
-                            or "authorization" in resp_str.lower()
-                            or "taskgroup" in resp_str.lower()
-                            or "connection lost" in resp_str.lower()
-                            or "403" in resp_str
-                            or "799" in resp_str
-                            or ("error" in response_data and "200" not in resp_str)
-                        )
                         
+                        # Determine if tool response is an actual error vs normal response
+                        is_error = False
+                        if isinstance(response_data, dict):
+                            if response_data.get("isError") is True:
+                                is_error = True
+                            elif "error" in response_data:
+                                is_error = True
+                        elif isinstance(response_data, str):
+                            lower_resp = response_data.lower()
+                            if any(k in lower_resp for k in ["connection lost", "taskgroup", "forbidden", "denied", "blocked"]):
+                                is_error = True
+
+                        # Strict check: If FastMCP explicitly marked isError as false, it is 100% successful
+                        if isinstance(response_data, dict) and response_data.get("isError") is False:
+                            is_error = False
+
                         has_403 = False
                         has_799 = False
                         
                         if is_error:
-                            if "send_email" in tool_name or "corporate_email" in tool_name:
+                            # Write tool corporate_email_send_email is blocked by IAP CEL (403 Forbidden)
+                            if "send_email" in tool_name:
                                 has_403 = True
                             else:
+                                # Inbound Model Armor (HTTP 799) blocks malicious arguments on data tools
                                 has_799 = True
                         
                         resp_event = {
