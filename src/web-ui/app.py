@@ -617,7 +617,7 @@ api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''</pre>
           <i class="fa-solid fa-arrow-up-right-from-square text-slate-400 group-hover:text-indigo-600"></i>
         </a>
 
-        <a href="https://console.cloud.google.com/security/model-armor/templates?project={{PROJECT_ID}}" target="_blank" class="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition flex items-center justify-between group">
+        <a href="https://console.cloud.google.com/security/modelarmor?project={{PROJECT_ID}}" target="_blank" class="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition flex items-center justify-between group">
           <div>
             <div class="font-bold text-slate-800 group-hover:text-indigo-600 flex items-center gap-1.5">
               <i class="fa-solid fa-sliders text-purple-500"></i> Model Armor 템플릿 관리
@@ -812,12 +812,12 @@ api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''</pre>
             <div class="font-bold text-slate-800 group-hover:text-indigo-600 flex items-center gap-1.5">
               <i class="fa-solid fa-waterfall text-cyan-600"></i> Cloud Trace Explorer
             </div>
-            <div class="text-[11px] text-slate-500 mt-0.5">Reasoning Engine ➔ Envoy Gateway ➔ Cloud Run 분산 폭포수 차트</div>
+            <div class="text-[11px] text-slate-500 mt-0.5">Reasoning Engine ➔ Envoy Gateway ➔ Cloud Run 분산 트레이스 타임라인</div>
           </div>
           <i class="fa-solid fa-arrow-up-right-from-square text-slate-400 group-hover:text-indigo-600"></i>
         </a>
 
-        <a href="https://console.cloud.google.com/security/model-armor/templates?project={{PROJECT_ID}}" target="_blank" class="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition flex items-center justify-between group">
+        <a href="https://console.cloud.google.com/security/modelarmor?project={{PROJECT_ID}}" target="_blank" class="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition flex items-center justify-between group">
           <div>
             <div class="font-bold text-slate-800 group-hover:text-indigo-600 flex items-center gap-1.5">
               <i class="fa-solid fa-sliders text-purple-500"></i> Model Armor 템플릿 관리
