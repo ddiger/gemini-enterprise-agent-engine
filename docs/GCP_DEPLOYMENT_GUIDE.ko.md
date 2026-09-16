@@ -340,6 +340,33 @@ print(resp2)
 
 ---
 
+### [테스트 6] Cloud Run 기반 대화형 대출 심사관 Web UI 포털 (추천)
+CLI나 스크립트 대신, 실제 브라우저에서 대출 심사관(Loan Officer) 관점으로 원클릭 테스트 및 실시간 보안 거버넌스(DLP 마스킹, Agent Gateway 차단)를 시각적으로 검증할 수 있는 웹 UI 포털이 제공됩니다.
+
+#### 1. Web UI Cloud Run 배포
+```bash
+gcloud run deploy mortgage-agent-ui \
+  --source src/web-ui \
+  --region=${REGION} \
+  --project=${PROJECT_ID} \
+  --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},REASONING_ENGINE_RESOURCE=${RE_RESOURCE} \
+  --allow-unauthenticated \
+  --port 8080 \
+  --memory 1Gi \
+  --cpu 1
+```
+
+#### 2. 웹 브라우저에서 접속 및 원클릭 시나리오 검증
+* 출력된 Cloud Run URL(예: `https://mortgage-agent-ui-49152802892.us-central1.run.app`)을 브라우저에서 엽니다.
+* 상단 리본 메뉴의 원클릭 버튼을 클릭하여 테스트합니다:
+  * **1. [양성] 서류 조회 & 소득 검증**: Sterling 가족 2023-2024 세금 신고서 요약 및 실시간 Cloud DLP SSN 마스킹 배지(`[US_SOCIAL_SECURITY_NUMBER]`) 확인.
+  * **2. [음성] 승인 이메일 발송 시도**: corporate-email 발송 시 Agent Gateway IAP ReadOnlyToolsOnly 정책에 의한 거부 및 안내 확인.
+  * **3. [음성] 시스템 프롬프트 탈취 공격**: 내부 지침 및 API 키 탈취 시도에 대한 Model Armor 안전 가드레일 방어 확인.
+* 우측 **Under-the-Hood Inspector** 패널에서 호출된 MCP Tool과 인가 상태가 실시간 스트리밍 타임라인으로 표시됩니다.
+
+---
+
 ## 🧹 7단계: 리소스 정리 (Clean Up)
 
 실습이 끝난 후 불필요한 과금을 방지하기 위해 리소스를 역순으로 정리합니다.

@@ -37,3 +37,4 @@ Thumbs.db
 skaffold.yaml
 cloudrun/*.yaml
 !cloudrun/*.yaml.tmpl
+terraform/backend.conf
