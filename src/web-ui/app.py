@@ -996,6 +996,7 @@ api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''</pre>
             <span>Agent Engine이 추론을 시작하고 Agent Gateway L7 정책을 확인 중입니다...</span>
           </div>
           <div id="${msgId}-tools" class="flex flex-wrap gap-1.5 mb-3"></div>
+          <div id="${msgId}-alerts" class="space-y-2 mb-3"></div>
           <div id="${msgId}-content" class="prose text-sm text-slate-800 leading-relaxed"></div>
         </div>
       `;
@@ -1005,6 +1006,7 @@ api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''</pre>
       const contentEl = document.getElementById(`${msgId}-content`);
       const statusEl = document.getElementById(`${msgId}-status`);
       const toolsEl = document.getElementById(`${msgId}-tools`);
+      const alertsEl = document.getElementById(`${msgId}-alerts`);
 
       let fullRawText = "";
 
@@ -1090,32 +1092,38 @@ api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''</pre>
                 }
 
               } else if (event.type === "security_alert") {
-                const alertBox = document.createElement('div');
-                let boxCls = "bg-emerald-50/80 border-emerald-200 text-emerald-900";
-                let iconCls = "bg-emerald-100 text-emerald-600";
-                let iconTag = "fa-user-shield";
+                if (alertsEl) {
+                  const existing = [...alertsEl.children].find(c => c.dataset.alertTitle === event.title);
+                  if (!existing) {
+                    const alertBox = document.createElement('div');
+                    alertBox.dataset.alertTitle = event.title;
+                    let boxCls = "bg-emerald-50/80 border-emerald-200 text-emerald-900";
+                    let iconCls = "bg-emerald-100 text-emerald-600";
+                    let iconTag = "fa-user-shield";
 
-                if (event.severity === "error") {
-                  boxCls = "bg-rose-50/80 border-rose-200 text-rose-900";
-                  iconCls = "bg-rose-100 text-rose-600";
-                  iconTag = "fa-shield-slash";
-                } else if (event.severity === "purple") {
-                  boxCls = "bg-purple-50/80 border-purple-200 text-purple-900";
-                  iconCls = "bg-purple-100 text-purple-600";
-                  iconTag = "fa-shield-cat";
+                    if (event.severity === "error") {
+                      boxCls = "bg-rose-50/80 border-rose-200 text-rose-900";
+                      iconCls = "bg-rose-100 text-rose-600";
+                      iconTag = "fa-shield-slash";
+                    } else if (event.severity === "purple") {
+                      boxCls = "bg-purple-50/80 border-purple-200 text-purple-900";
+                      iconCls = "bg-purple-100 text-purple-600";
+                      iconTag = "fa-shield-cat";
+                    }
+
+                    alertBox.className = `p-4 rounded-xl border flex items-start space-x-3 text-xs shadow-2xs ${boxCls}`;
+                    alertBox.innerHTML = `
+                      <div class="w-7 h-7 rounded-lg ${iconCls} flex items-center justify-center shrink-0 mt-0.5">
+                        <i class="fa-solid ${iconTag} text-sm"></i>
+                      </div>
+                      <div>
+                        <strong class="block font-bold text-sm tracking-tight">${event.title}</strong>
+                        <span class="leading-relaxed mt-0.5 block">${event.detail}</span>
+                      </div>
+                    `;
+                    alertsEl.appendChild(alertBox);
+                  }
                 }
-
-                alertBox.className = `p-4 my-2.5 rounded-xl border flex items-start space-x-3 text-xs shadow-2xs ${boxCls}`;
-                alertBox.innerHTML = `
-                  <div class="w-7 h-7 rounded-lg ${iconCls} flex items-center justify-center shrink-0 mt-0.5">
-                    <i class="fa-solid ${iconTag} text-sm"></i>
-                  </div>
-                  <div>
-                    <strong class="block font-bold text-sm tracking-tight">${event.title}</strong>
-                    <span class="leading-relaxed mt-0.5 block">${event.detail}</span>
-                  </div>
-                `;
-                contentEl.appendChild(alertBox);
 
               } else if (event.type === "text") {
                 fullRawText += event.text;
