@@ -85,13 +85,13 @@ def _setup_gateway_ca():
 
             combined_bundle = certifi_data.strip() + "\n\n" + ca_cert_data + "\n"
 
+            tmp_bundle = f"/tmp/ca_bundle_{os.getpid()}.pem"
             try:
-                with open(bundle_path, "w", encoding="utf-8") as f:
+                with open(tmp_bundle, "w", encoding="utf-8") as f:
                     f.write(combined_bundle)
-            except Exception:
-                bundle_path = "/tmp/ca_bundle.pem"
-                with open(bundle_path, "w", encoding="utf-8") as f:
-                    f.write(combined_bundle)
+                os.replace(tmp_bundle, bundle_path)
+            except Exception as e:
+                bundle_path = tmp_bundle
         except Exception as e:
             logger.warning("Failed to configure Gateway CA: %s", e)
             return
@@ -497,29 +497,42 @@ def _discover_mcp_toolsets() -> list:
             "is missing a transitive dep (typically a2a-sdk).",
             e,
         )
-        _CACHED_TOOLSETS = []
-        _CACHED_DISCOVERED = []
-        return _CACHED_TOOLSETS
+        return []
 
-    try:
-        if endpoint:
-            # Override ADK's hardcoded module-level endpoint constant. Remove
-            # this patch if ADK starts accepting an explicit endpoint argument.
-            _ar_module.AGENT_REGISTRY_BASE_URL = endpoint
+    if endpoint:
+        # Override ADK's hardcoded module-level endpoint constant. Remove
+        # this patch if ADK starts accepting an explicit endpoint argument.
+        _ar_module.AGENT_REGISTRY_BASE_URL = endpoint
 
-        registry = AgentRegistry(project_id=project, location=location)
-        response = registry.list_mcp_servers(filter_str=filter_str)
-    except Exception:
+    response = None
+    import time
+    for attempt in range(1, 4):
+        try:
+            registry = AgentRegistry(project_id=project, location=location)
+            response = registry.list_mcp_servers(filter_str=filter_str)
+            if response and response.get("mcpServers"):
+                break
+        except Exception as exc:
+            effective_endpoint = endpoint or getattr(_ar_module, "AGENT_REGISTRY_BASE_URL", "<adk-default>")
+            logger.warning(
+                "Attempt %d/3 to list MCP servers from registry %s/%s failed (%s).",
+                attempt,
+                project,
+                location,
+                exc,
+            )
+            if attempt < 3:
+                time.sleep(1.0)
+
+    if not response or not response.get("mcpServers"):
         effective_endpoint = endpoint or getattr(_ar_module, "AGENT_REGISTRY_BASE_URL", "<adk-default>")
-        logger.exception(
-            "Failed to list MCP servers from registry %s/%s (endpoint=%s)",
+        logger.error(
+            "Failed to list MCP servers from registry %s/%s after 3 attempts (endpoint=%s)",
             project,
             location,
             effective_endpoint,
         )
-        _CACHED_TOOLSETS = []
-        _CACHED_DISCOVERED = []
-        return _CACHED_TOOLSETS
+        return []
 
     raw_servers = response.get("mcpServers", [])
     effective_endpoint = endpoint or getattr(_ar_module, "AGENT_REGISTRY_BASE_URL", "<adk-default>")
@@ -634,6 +647,28 @@ class _PickleSafeAgent(Agent):
 
     def __deepcopy__(self, memo):
         return _build_agent()
+
+    def _ensure_mcp_tools(self):
+        if len(self.tools) <= 2:
+            toolsets = _discover_mcp_toolsets()
+            if toolsets:
+                self.tools = [
+                    tools.get_current_time,
+                    tools.list_mcp_connections,
+                ] + list(toolsets)
+                self.instruction = _INSTRUCTION_TEMPLATE.format(mcp_services_doc=_render_mcp_services_doc())
+                logger.info(
+                    "Dynamically attached %d MCP toolsets to _PickleSafeAgent.",
+                    len(toolsets),
+                )
+
+    async def canonical_tools(self, ctx=None):
+        self._ensure_mcp_tools()
+        return await super().canonical_tools(ctx)
+
+    async def canonical_instruction(self, ctx):
+        self._ensure_mcp_tools()
+        return await super().canonical_instruction(ctx)
 
 
 def _build_agent():
