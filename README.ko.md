@@ -215,13 +215,15 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 ├── cloudrun/                              # Cloud Run 서비스 매니페스트 템플릿
 │   ├── corporate-email.yaml.tmpl
 │   ├── income-verification-api.yaml.tmpl
-│   └── legacy-dms.yaml.tmpl
+│   ├── legacy-dms.yaml.tmpl
+│   └── mortgage-agent-ui.yaml.tmpl
 ├── skaffold.yaml.tmpl                     # Cloud Build 컨테이너 빌드 & Cloud Run 배포 파이프라인
 ├── src/                                   # 실제 소스코드
 │   ├── legacy-dms/                        # FastMCP 세무자료 조회 서버
 │   ├── income-verification-api/           # 소득 및 고용 검증 API
 │   ├── corporate-email/                   # 승인 안내 이메일 발송 서버
-│   └── mortgage-agent/                    # ADK 대출 심사 에이전트 및 deploy_agent.py
+│   ├── mortgage-agent/                    # ADK 대출 심사 에이전트 및 deploy_agent.py
+│   └── web-ui/                            # 대출 심사관 인터랙티브 데모 Web UI (FastAPI + SSE)
 └── scripts/
     └── grant_agent_mcp_egress.sh          # 에이전트별 IAP MCP Egress IAM 권한 및 CEL 조건 부여 스크립트
 ```

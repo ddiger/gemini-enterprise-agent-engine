@@ -209,13 +209,15 @@ As requests traverse the managed Envoy proxy, two Service Extension callouts are
 ├── cloudrun/                              # Cloud Run service manifests (envsubst templates)
 │   ├── corporate-email.yaml.tmpl
 │   ├── income-verification-api.yaml.tmpl
-│   └── legacy-dms.yaml.tmpl
+│   ├── legacy-dms.yaml.tmpl
+│   └── mortgage-agent-ui.yaml.tmpl
 ├── skaffold.yaml.tmpl                     # Container build + Cloud Run deploy pipeline
 ├── src/                                   # Application source code
 │   ├── legacy-dms/                        # FastMCP document management server
 │   ├── income-verification-api/           # Income & employment verification API
 │   ├── corporate-email/                   # Corporate notification email service
-│   └── mortgage-agent/                    # ADK loan evaluator agent & deploy_agent.py
+│   ├── mortgage-agent/                    # ADK loan evaluator agent & deploy_agent.py
+│   └── web-ui/                            # Interactive demo Web UI portal (FastAPI + SSE)
 └── scripts/
     └── grant_agent_mcp_egress.sh          # Per-MCP IAP egress IAM binding script
 ```
