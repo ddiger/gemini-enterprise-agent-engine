@@ -555,6 +555,11 @@ def _discover_mcp_toolsets() -> list:
         # instance per MCP backend (terraform/example.tfvars), not by stretching
         # the per-call budget.
         conn_params = getattr(toolset, "_connection_params", None)
+        if conn_params is not None:
+            if hasattr(conn_params, "timeout"):
+                conn_params.timeout = 30.0
+            if hasattr(conn_params, "request_timeout"):
+                conn_params.request_timeout = 30.0
         resolved_url = getattr(conn_params, "url", None)
         # Inject SA-impersonation auth so each MCP HTTP call carries an OIDC
         # ID token for the invoker SA. Cloud Run validates the token and sees
@@ -608,9 +613,17 @@ def _discover_mcp_toolsets() -> list:
             effective_endpoint,
         )
 
-    _CACHED_TOOLSETS = toolsets
-    _CACHED_DISCOVERED = list(DISCOVERED_MCP_SERVERS)
-    return _CACHED_TOOLSETS
+    if len(toolsets) >= 3:
+        _CACHED_TOOLSETS = toolsets
+        _CACHED_DISCOVERED = list(DISCOVERED_MCP_SERVERS)
+    else:
+        logger.warning(
+            "Discovered only %d MCP server(s) (< 3); skipping cache so next query will retry.",
+            len(toolsets),
+        )
+        _CACHED_TOOLSETS = None
+        _CACHED_DISCOVERED = None
+    return toolsets
 
 
 class _PickleSafeAgent(Agent):
