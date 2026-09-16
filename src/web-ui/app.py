@@ -120,7 +120,16 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
                         resp_str = json.dumps(response_data)
                         
                         has_dlp_mask = "[US_SOCIAL_SECURITY_NUMBER]" in resp_str
-                        has_403 = "403" in resp_str or "Forbidden" in resp_str or "denied" in resp_str.lower()
+                        has_403 = (
+                            "403" in resp_str
+                            or "forbidden" in resp_str.lower()
+                            or "denied" in resp_str.lower()
+                            or "blocked" in resp_str.lower()
+                            or "authorization" in resp_str.lower()
+                            or "taskgroup" in resp_str.lower()
+                            or "connection lost" in resp_str.lower()
+                            or ("error" in response_data and "200" not in resp_str)
+                        )
                         
                         resp_event = {
                             "type": "tool_response",
