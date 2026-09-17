@@ -83,6 +83,16 @@ flowchart TD
   - `OAuth 2.0` 및 Google Cloud IAM 기반으로 호출자의 사용자 신원(User Principal)을 검증.
   - 사용자 컨텍스트는 요청 헤더에 안전하게 캡슐화되어 Agent Runtime으로 전달되며, 감사 로그(Cloud Audit Logs)에 주체별 활동 기록이 남습니다.
 
+#### B. 듀얼 프론트엔드 소비 계층 (Dual Front-End Coexistence)
+본 아키텍처는 단일 백엔드 에이전트 런타임(Reasoning Engine) 및 Egress Agent Gateway를 유지하면서, 비즈니스 목적에 따라 두 가지 프론트엔드 계층을 완벽히 병행할 수 있도록 설계되었습니다:
+1. **Custom Web UI 포털 (Cloud Run `mortgage-agent-ui`)**:
+   - CISO, 보안 감사관, 엔터프라이즈 아키텍트 대상의 기술 검증 및 데모 인터페이스.
+   - Envoy L7 수준의 차단 이벤트(`HTTP 799`, `403 Forbidden`), Cloud DLP SSN 마스킹 결과, CEL 인가 규칙 실시간 시각화 배지 제공.
+2. **Gemini Enterprise (구 Google Agentspace)**:
+   - 실제 사내 직원(심사역, 대출 상담원)이 업무에서 활용하는 완전 관리형 엔터프라이즈 AI 포털.
+   - Google Cloud Discovery Engine 기반으로 구동되며, 사내 IdP(Google Cloud Identity, Okta, Microsoft Entra ID) SSO 로그인 및 역할 기반 접근 제어(RBAC) 자동 통합.
+   - ADK 네이티브 `:streamQuery` 프로토콜을 통해 Reasoning Engine과 직접 스트리밍 통신하며, 백엔드 Egress 거버넌스(Agent Gateway L7)는 동일하게 100% 적용.
+
 ---
 
 ### 3.2. Agent Gateway (에이전틱 트래픽 네트워크 관제탑)

@@ -164,18 +164,17 @@ The repository provides 5 enterprise governance scenarios that can be tested in 
 
 ---
 
-## 🖥️ Interactive Loan Officer Web UI Portal
+## 🖥️ Dual Front-End Architecture
 
-In addition to CLI testing, this repository provides a dedicated, production-ready **Cloud Run Web UI Portal (`src/web-ui`)** for interactive demonstrations.
+This project supports **two parallel front-end options (Coexistence)** sharing the same Vertex AI Reasoning Engine and Agent Gateway L7 governance backend:
 
-* **🌐 Portal Deployment**: Cloud Run URL generated in Step 6 (`https://mortgage-agent-ui-${PROJECT_NUMBER}.${REGION}.run.app`)
-* **Key Features**:
-  1. **One-Click 5 Scenario Ribbon**: Instantly trigger positive flows, 403 blocks, jailbreak refusals, and injection defenses.
-  2. **Architecture: Before vs After Modal**: Visual side-by-side comparison of Direct Cloud Run risks vs Agent Gateway solutions.
-  3. **Under-the-Hood Inspector (3 Tabs)**:
-     - **Live L7 Timeline**: Real-time streaming of tool calls, DLP redactions, and IAP CEL authorization verdicts.
-     - **Governance Rulebook**: Active CEL expressions and Model Armor template configurations (HTTP 799 / 798).
-     - **Cloud Console Deep Links**: Direct 1-click links to Google Cloud Logs Explorer (`sanitize_operations`, `gateway_requests`) and Cloud Trace Explorer.
+| Front-End Option | Target Audience & Purpose | Key Features | Deployment |
+| :--- | :--- | :--- | :--- |
+| **Option A: Custom Web UI** (`mortgage-agent-ui`) | **CISO, Architects, Technical Demos** | • Live Envoy L7 interception badges (`HTTP 799`, `403 Forbidden`)<br/>• Real-time Cloud DLP SSN redaction highlights<br/>• 1-click scenario execution and interactive Demo Guide modal | Serverless Cloud Run deployment (`src/web-ui`) |
+| **Option B: Gemini Enterprise** (ex-Agentspace) | **Enterprise Employees (Production)** | • Corporate IdP (Cloud Identity, Okta, Microsoft Entra ID) **SSO Login**<br/>• Unified multi-agent hub alongside enterprise search and Drive/SharePoint RAG<br/>• Fully managed enterprise SaaS portal with zero front-end code maintenance | Registered via `register_gemini_enterprise.sh` |
+
+* **🌐 Custom Web UI URL**: `https://mortgage-agent-ui-${PROJECT_NUMBER}.${REGION}.run.app`
+* **🏢 Gemini Enterprise Console**: `https://console.cloud.google.com/gemini-enterprise/locations/global/engines/<APP_ID>/overview/dashboard`
 
 ---
 
@@ -317,8 +316,9 @@ sed -i 's/agent_gateway_iap_iam_enforcement_mode = "DRY_RUN"/agent_gateway_iap_i
 terraform apply -auto-approve
 cd ..
 
-# 6. Deploy Interactive Loan Officer Web UI Portal
-# Grant UI service account permission to call Vertex AI Reasoning Engine
+# 6. Deploy Front-End Interface (Dual Options: Web UI or Gemini Enterprise)
+
+# [Option A] Deploy Interactive Cloud Run Web UI Portal (CISO & Tech Demos)
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/aiplatform.user"
@@ -331,4 +331,11 @@ gcloud run deploy mortgage-agent-ui \
   --set-env-vars GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},REASONING_ENGINE_RESOURCE=projects/${PROJECT_NUMBER}/locations/${REGION}/reasoningEngines/${AGENT_ID} \
   --allow-unauthenticated \
   --port 8080 --memory 1Gi --cpu 1
+
+# [Option B] Publish Agent to Gemini Enterprise (ex-Agentspace) Portal (Enterprise Production)
+./scripts/register_gemini_enterprise.sh \
+  --project-id "${PROJECT_ID}" \
+  --region "${REGION}" \
+  --agent-id "${AGENT_ID}" \
+  --display-name "Secured Mortgage Underwriter"
 ```

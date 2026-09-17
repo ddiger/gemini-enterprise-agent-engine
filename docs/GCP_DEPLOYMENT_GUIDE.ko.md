@@ -369,17 +369,42 @@ print(resp2)
 
 ---
 
-### [테스트 6] Cloud Run 기반 대화형 대출 심사관 Web UI 포털 (추천)
-CLI나 스크립트 대신, 실제 브라우저에서 대출 심사관(Loan Officer) 관점으로 원클릭 테스트 및 실시간 보안 거버넌스(DLP 마스킹, Agent Gateway 차단)를 시각적으로 검증할 수 있는 웹 UI 포털이 제공됩니다.
+### [테스트 6] 대출 심사관 프론트엔드 연동 및 검증 (Dual Front-End Options)
 
-#### 1. Web UI Cloud Run 배포
+본 프로젝트는 동일한 Vertex AI Reasoning Engine 및 Agent Gateway 백엔드를 공유하면서, 목적에 따라 2가지 버전의 프론트엔드를 완벽하게 병행(Coexistence)하여 운영할 수 있습니다:
+
+```
+                               ┌─▶ [옵션 A] Custom Web UI (Cloud Run)
+                               │            • L7 보안 심층 데모, 실시간 403/799 배지, DLP 시각화
+[대출 심사관 / 아키텍트] ───────┤
+                               │
+                               └─▶ [옵션 B] Gemini Enterprise (구 Agentspace)
+                                            • 사내 IdP SSO(Cloud Identity/Okta), 멀티 에이전트 포털
+                                            
+                                                     │ (Reasoning Engine 스트리밍)
+                                                     ▼
+                                       [Vertex AI Reasoning Engine]
+                                                     │ (PSC Egress)
+                                                     ▼
+                                       [Agent Gateway (Envoy L7)]
+                                                     │ (Model Armor / DLP / IAP)
+                                                     ▼
+                                       [Cloud Run FastMCP Backends]
+```
+
+---
+
+#### 🌟 옵션 A: Cloud Run 기반 대화형 대출 심사관 Web UI 포털 (CISO·기술 데모용)
+CLI나 스크립트 대신, 실제 브라우저에서 대출 심사관(Loan Officer) 관점으로 원클릭 테스트 및 실시간 보안 거버넌스(DLP 마스킹, Agent Gateway 차단 배지)를 시각적으로 검증할 수 있는 독립 웹 UI 포털입니다.
+
+##### 1) Web UI Cloud Run 배포
 ```bash
-# 1) Web UI 실행 서비스 계정에 Vertex AI Reasoning Engine 호출 권한 부여
+# 1. Web UI 실행 서비스 계정에 Vertex AI Reasoning Engine 호출 권한 부여
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/aiplatform.user"
 
-# 2) Cloud Run에 Web UI 포털 배포
+# 2. Cloud Run에 Web UI 포털 배포
 gcloud run deploy mortgage-agent-ui \
   --source src/web-ui \
   --region=${REGION} \
@@ -392,8 +417,9 @@ gcloud run deploy mortgage-agent-ui \
   --cpu 1
 ```
 
-#### 2. 웹 브라우저에서 접속 및 원클릭 시나리오 검증
+##### 2) 웹 브라우저에서 접속 및 원클릭 시나리오 검증
 * 출력된 Cloud Run URL(예: `https://mortgage-agent-ui-${PROJECT_NUMBER}.${REGION}.run.app`)을 브라우저에서 엽니다.
+* 상단 헤더의 **"데모 가이드 & 테스트 데이터"** 모달을 통해 등록된 신청인 데이터와 5대 보안 시나리오를 한눈에 확인하고 자유 질의할 수 있습니다.
 * 상단 리본 메뉴의 5대 원클릭 테스트 시나리오를 클릭하여 검증합니다:
   * **1. [정상] 서류 요약 & 소득 검증**: Sterling 가족 2023-2024 세금 신고서 요약 및 실시간 Cloud DLP SSN 마스킹 배지(`[US_SOCIAL_SECURITY_NUMBER]`) 확인.
   * **2. [차단] 외부 개인메일 유출 시도**: attacker@external.com 전송 시 Agent Gateway IAP ReadOnlyToolsOnly 정책에 의한 403 Forbidden 강제 차단 확인.
@@ -403,6 +429,35 @@ gcloud run deploy mortgage-agent-ui \
 * **Architecture: Before vs After 모달**: 상단 버튼 클릭 시 Agent Gateway가 없을 때(Direct Cloud Run 연결 시 발생하는 4대 보안 재앙)와 도입 후의 해결책을 대조표로 확인.
 * **Cloud Observability & Logs 모달**: 클릭 한 번으로 Google Cloud Console의 `sanitize_operations`, `gateway_requests`, `Cloud Trace Explorer` 실시간 분석 화면으로 즉시 이동.
 * 우측 **Under-the-Hood Inspector** 패널에서 실시간 L7 도구 호출 트레이스, 보안 정책 규정집(CEL, Model Armor), 클라우드 딥링크를 탭별로 조회 가능.
+
+---
+
+#### 🏢 옵션 B: Gemini Enterprise (구 Agentspace) 포털 연동 (사내 임직원 업무용)
+Google Cloud Discovery Engine 기반의 기업용 AI 통합 포털인 **Gemini Enterprise**에 대출 심사 에이전트를 등록하여, 사내 임직원들이 사내 SSO(Cloud Identity / Okta) 로그인 환경에서 즉시 활용할 수 있도록 배포합니다.
+
+##### 1) 자동 등록 스크립트 실행
+제공되는 자동화 스크립트를 통해 Discovery Engine IAM 바인딩, ADK 네이티브 에이전트 퍼블리시, 전사 공유 설정을 원클릭으로 완료합니다:
+
+```bash
+# Gemini Enterprise에 대출 심사 에이전트 퍼블리시
+./scripts/register_gemini_enterprise.sh \
+  --project-id "${PROJECT_ID}" \
+  --region "${REGION}" \
+  --agent-id "${AGENT_ID}" \
+  --display-name "Secured Mortgage Underwriter"
+
+# 등록 상태 확인
+./scripts/register_gemini_enterprise.sh --project-id "${PROJECT_ID}" --list
+```
+
+##### 2) Gemini Enterprise 포털에서 대출 심사 진행
+* Google Cloud Console의 **Gemini Enterprise > Apps** 포털 또는 조직 전용 Gemini Enterprise URL로 접속합니다.
+* 채팅창에서 `@Secured Mortgage Underwriter`를 호출하거나 대화방을 시작합니다.
+* 예시 질의:
+  ```text
+  Sterling 가족의 2023년과 2024년 세금 신고서를 요약해 주고 소득을 검증해 줘.
+  ```
+* **제로 트러스트 검증**: Gemini Enterprise에서 질의하더라도, 에이전트가 호출하는 모든 백엔드 MCP 도구는 동일하게 **Agent Gateway(Envoy L7)**를 통과하므로, Cloud DLP에 의한 SSN 실시간 마스킹과 IAP 쓰기 차단(403) 거버넌스가 완벽하게 유지됩니다.
 
 ---
 

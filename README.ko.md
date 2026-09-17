@@ -167,18 +167,17 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 
 ---
 
-## 🖥️ 대화형 대출 심사관 Web UI 포털 (Loan Officer Portal)
+## 🖥️ 듀얼 프론트엔드 아키텍처 (Dual Front-End Architecture)
 
-본 프로젝트는 CLI 명령어뿐만 아니라, 누구나 브라우저에서 직관적으로 Agent Gateway의 4대 핵심 축을 직접 체험할 수 있도록 **Cloud Run 기반 대화형 웹 UI 포털(`src/web-ui`)**을 기본 제공합니다.
+본 프로젝트는 단일 백엔드(Vertex AI Reasoning Engine + Agent Gateway L7)를 기반으로, 운영 목적에 따라 **2가지 버전의 프론트엔드를 완벽하게 병행(Coexistence)**하여 운영할 수 있습니다.
 
-* **🌐 포털 배포 엔드포인트**: Step 6 실행 시 Cloud Run 엔드포인트 자동 생성 (`https://mortgage-agent-ui-${PROJECT_NUMBER}.${REGION}.run.app`)
-* **주요 기능**:
-  1. **원클릭 5대 시나리오 리본**: 상단 버튼 클릭만으로 정상 조회, 403 차단, 탈옥 방어, 인젝션 방어 즉시 재현.
-  2. **Architecture: Before vs After 모달**: Agent Gateway 없이 직접 연결했을 때의 4대 보안 위험과 게이트웨이 도입 효과 비교.
-  3. **Under-the-Hood Inspector (3단 탭)**:
-     - **L7 실시간 트레이스**: 도구 호출 인자, DLP 마스킹 감지, IAP CEL 판정 이벤트 실시간 스트리밍.
-     - **보안 정책 규정집**: 배포된 IAP CEL 수식, Model Armor 요청(799)/응답(798) 설정 확인.
-     - **Cloud 콘솔 딥링크**: Cloud Logging(`sanitize_operations`, `gateway_requests`) 및 Cloud Trace Explorer로 즉시 이동.
+| 프론트엔드 | 주요 목적 및 대상 | 핵심 특징 및 장점 | 배포 방식 |
+| :--- | :--- | :--- | :--- |
+| **옵션 A: Custom Web UI** (`mortgage-agent-ui`) | **CISO, 아키텍트, 기술 데모용** | • Envoy L7 실시간 차단 배지 (`HTTP 799`, `403 Forbidden`) 시각화<br/>• Cloud DLP SSN 마스킹 실시간 하이라이트<br/>• 5대 시나리오 원클릭 실행 및 데모 가이드/테스트 데이터 모달 | Cloud Run 서버리스 배포 (`src/web-ui`) |
+| **옵션 B: Gemini Enterprise** (구 Agentspace) | **사내 임직원 업무용 (Production)** | • 사내 IdP (Cloud Identity, Okta, Entra ID) 통합 **SSO 로그인**<br/>• 사내 사규 검색(RAG), 구글 드라이브 등과 통합된 **멀티 에이전트 허브**<br/>• 프론트엔드 코드/인프라 관리 없는 완전 관리형 SaaS/PaaS 포털 | `register_gemini_enterprise.sh` 스크립트 등록 |
+
+* **🌐 Custom Web UI 배포 엔드포인트**: `https://mortgage-agent-ui-${PROJECT_NUMBER}.${REGION}.run.app`
+* **🏢 Gemini Enterprise 콘솔**: `https://console.cloud.google.com/gemini-enterprise/locations/global/engines/<APP_ID>/overview/dashboard`
 
 ---
 
@@ -323,13 +322,13 @@ sed -i 's/agent_gateway_iap_iam_enforcement_mode = "DRY_RUN"/agent_gateway_iap_i
 terraform apply -auto-approve
 cd ..
 
-# 6. 대출 심사관 인터랙티브 Web UI 포털 배포 (Cloud Run)
-# 1) UI 서비스 계정에 Vertex AI Reasoning Engine 호출 권한 부여
+# 6. 프론트엔드 인터페이스 배포 및 연동 (Dual Front-End Options)
+
+# [옵션 A] Cloud Run 대화형 Web UI 포털 배포 (CISO / 기술 데모용)
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/aiplatform.user"
 
-# 2) Cloud Run 서비스 배포
 gcloud run deploy mortgage-agent-ui \
   --source src/web-ui \
   --region=${REGION} \
@@ -338,4 +337,11 @@ gcloud run deploy mortgage-agent-ui \
   --set-env-vars GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},REASONING_ENGINE_RESOURCE=projects/${PROJECT_NUMBER}/locations/${REGION}/reasoningEngines/${AGENT_ID} \
   --allow-unauthenticated \
   --port 8080 --memory 1Gi --cpu 1
+
+# [옵션 B] Gemini Enterprise (구 Agentspace) 포털 퍼블리시 (사내 업무용)
+./scripts/register_gemini_enterprise.sh \
+  --project-id "${PROJECT_ID}" \
+  --region "${REGION}" \
+  --agent-id "${AGENT_ID}" \
+  --display-name "Secured Mortgage Underwriter"
 ```
