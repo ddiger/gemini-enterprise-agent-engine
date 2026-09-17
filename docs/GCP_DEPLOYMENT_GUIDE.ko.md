@@ -89,6 +89,9 @@ flowchart TD
 Cloud Shell 또는 로컬 터미널에서 대상 프로젝트, 조직, 리전을 설정하고 필수 Google Cloud API를 활성화합니다.
 
 ```bash
+# 0. 배포 전 환경 사전 점검 (권장: 필수 도구, 계정, Org ID, API 원클릭 검사)
+./scripts/preflight_check.sh
+
 # 1. 기본 환경 변수 지정
 export PROJECT_ID="<YOUR_GCP_PROJECT_ID>"
 export REGION="us-central1"
@@ -190,13 +193,9 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
 # 4. Skaffold로 컨테이너 빌드 및 Cloud Run 배포 실행 (약 3~5분 소요)
 skaffold run
 
-# 5. (권장) 에이전트 초기화 콜드스타트 방지를 위한 최소 인스턴스 1 설정
-# 에이전트가 MCP 레지스트리 탐색 시 5초 이내 응답을 요구하므로 콜드스타트 타임아웃을 방지합니다.
-for svc in legacy-dms income-verification corporate-email; do
-  gcloud run services update "$svc" --min-instances=1 --region=${REGION} --quiet
-done
-
-# 6. 배포된 서비스 상태 확인
+# 5. 배포된 서비스 상태 확인
+# 참고: cloudrun/*.yaml.tmpl 매니페스트에 autoscaling.knative.dev/minScale: 1이 이미 선언되어 있으므로,
+# skaffold run 완료 즉시 각 MCP 서비스당 최소 1개 인스턴스가 상시 기동(콜드스타트 방지)됩니다.
 gcloud run services list --region=${REGION}
 ```
 

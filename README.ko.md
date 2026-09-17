@@ -251,7 +251,9 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 │   ├── mortgage-agent/                    # ADK 대출 심사 에이전트 및 deploy_agent.py
 │   └── web-ui/                            # 대출 심사관 인터랙티브 데모 Web UI (FastAPI + SSE)
 └── scripts/
-    └── grant_agent_mcp_egress.sh          # 에이전트별 IAP MCP Egress IAM 권한 및 CEL 조건 부여 스크립트
+    ├── preflight_check.sh                 # 필수 CLI 도구, 계정, Org ID, API 원클릭 사전 점검 스크립트
+    ├── grant_agent_mcp_egress.sh          # 에이전트별 IAP MCP Egress IAM 권한 및 CEL 조건 부여 스크립트
+    └── register_gemini_enterprise.sh      # Gemini Enterprise App 에이전트 자동 등록 및 권한 부여 스크립트
 ```
 
 ---
@@ -261,6 +263,9 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 Google Cloud 프로젝트 배포를 위한 단계별 전체 절차는 **[GCP 배포 가이드 (docs/GCP_DEPLOYMENT_GUIDE.ko.md)](docs/GCP_DEPLOYMENT_GUIDE.ko.md)**에 상세히 설명되어 있습니다.
 
 ```bash
+# 0. 배포 전 환경 사전 점검
+./scripts/preflight_check.sh
+
 export PROJECT_ID="<your-project-id>"
 export REGION="us-central1"
 

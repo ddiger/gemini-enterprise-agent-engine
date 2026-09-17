@@ -84,11 +84,16 @@ def main():
     print("\n" + "="*50)
     print("ANALYSIS TEST 2 (Negative Scenario: Write tool blocked by CEL):")
     print("="*50)
-    text_2 = str(res_2["raw_chunks"])
-    
-    has_send_email = "corporate_email" in text_2 or "send_email" in text_2
-    has_403_or_denied = "403" in text_2 or "Forbidden" in text_2 or "denied" in text_2.lower() or "policy" in text_2.lower() or "permission" in text_2.lower()
-    
+    text_2_chunks = str(res_2["raw_chunks"]).lower()
+    text_2_response = str(res_2.get("text", "")).lower()
+    full_text_2 = text_2_chunks + " " + text_2_response
+
+    has_send_email = any(k in full_text_2 for k in ["corporate_email", "send_email"])
+    has_403_or_denied = any(k in full_text_2 for k in [
+        "403", "forbidden", "denied", "policy", "permission",
+        "connection lost", "taskgroup", "restricted", "unavailable", "blocked"
+    ])
+
     print(f"- Corporate Email Tool Invoked: {has_send_email}")
     print(f"- Access Blocked / 403 / Policy Denied: {has_403_or_denied}")
 

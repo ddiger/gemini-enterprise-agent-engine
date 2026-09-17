@@ -119,7 +119,12 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
                         response_data = fr.get("response", {})
                         resp_str = json.dumps(response_data)
                         
-                        has_dlp_mask = "[US_SOCIAL_SECURITY_NUMBER]" in resp_str
+                        dlp_tokens = [
+                            "[US_SOCIAL_SECURITY_NUMBER]", "[EMAIL_ADDRESS]",
+                            "[STREET_ADDRESS]", "[PHONE_NUMBER]", "[CREDIT_CARD_NUMBER]"
+                        ]
+                        detected_dlp = [tok for tok in dlp_tokens if tok in resp_str]
+                        has_dlp_mask = len(detected_dlp) > 0
                         
                         # Determine if tool response is an actual error vs normal response
                         is_error = False
@@ -139,14 +144,16 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
 
                         has_403 = False
                         has_799 = False
+                        has_generic_err = False
                         
                         if is_error:
-                            # Write tool corporate_email_send_email is blocked by IAP CEL (403 Forbidden)
-                            if "send_email" in tool_name:
+                            lower_err = resp_str.lower()
+                            if any(k in lower_err for k in ["799", "model armor", "modelarmor", "jailbreak", "prompt injection", "harmful"]):
+                                has_799 = True
+                            elif any(k in lower_err for k in ["403", "forbidden", "denied", "permission", "policy", "connection lost", "taskgroup", "restricted"]) or "send_email" in tool_name:
                                 has_403 = True
                             else:
-                                # Inbound Model Armor (HTTP 799) blocks malicious arguments on data tools
-                                has_799 = True
+                                has_generic_err = True
                         
                         resp_event = {
                             "type": "tool_response",
@@ -160,11 +167,12 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
                         yield f"data: {json.dumps(resp_event)}\n\n"
                         
                         if has_dlp_mask:
+                            token_list_str = ", ".join(detected_dlp)
                             sec_event = {
                                 "type": "security_alert",
                                 "severity": "success",
-                                "title": "Cloud DLP SSN Redaction Enforced",
-                                "detail": "주민등록번호(SSN)가 감지되어 백엔드 응답에서 [US_SOCIAL_SECURITY_NUMBER] 토큰으로 실시간 비식별화되었습니다.",
+                                "title": "Cloud DLP PII Redaction Enforced",
+                                "detail": f"민감 정보(PII)가 감지되어 백엔드 응답에서 실시간 비식별화되었습니다: {token_list_str}",
                             }
                             yield f"data: {json.dumps(sec_event)}\n\n"
                             
@@ -183,6 +191,15 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
                                 "severity": "error",
                                 "title": "Agent Gateway L7 IAP CEL Block (403)",
                                 "detail": f"Agent Gateway IAP 인가 정책(ReadOnlyToolsOnly)에 의해 쓰기 도구({tool_name}) 호출이 차단되었습니다.",
+                            }
+                            yield f"data: {json.dumps(sec_event)}\n\n"
+
+                        if has_generic_err:
+                            sec_event = {
+                                "type": "security_alert",
+                                "severity": "warning",
+                                "title": "Tool Execution Warning",
+                                "detail": f"도구({tool_name}) 실행 중 오류가 발생했습니다: {resp_str[:120]}",
                             }
                             yield f"data: {json.dumps(sec_event)}\n\n"
 

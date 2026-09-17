@@ -716,7 +716,21 @@ def main() -> None:
 
             project_id = args.project
             project_number = None
-            org_id = tf_vars.get("organization_id") or os.environ.get("ORG_ID")
+            org_id = os.environ.get("ORG_ID") or tf_vars.get("organization_id")
+            if not org_id:
+                try:
+                    res_org = subprocess.run(
+                        ["gcloud", "projects", "get-ancestors", project_id, "--format=value(id)", "--filter=type:organization"],
+                        capture_output=True,
+                        text=True,
+                    )
+                    detected_org = res_org.stdout.strip().splitlines()
+                    if detected_org and detected_org[0]:
+                        org_id = detected_org[0]
+                        print(f"Auto-detected ORG_ID via gcloud: {org_id}")
+                except Exception:
+                    pass
+
             if not org_id:
                 print(
                     "Error: Could not resolve organization_id/ORG_ID. Please set it in "

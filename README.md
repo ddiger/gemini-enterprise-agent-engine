@@ -246,7 +246,9 @@ This project supports **two parallel front-end options (Coexistence)** sharing t
 │   ├── mortgage-agent/                    # ADK loan evaluator agent & deploy_agent.py
 │   └── web-ui/                            # Interactive demo Web UI portal (FastAPI + SSE)
 └── scripts/
-    └── grant_agent_mcp_egress.sh          # Per-MCP IAP egress IAM binding script
+    ├── preflight_check.sh                 # Environment, Org ID, tools, and API preflight validation script
+    ├── grant_agent_mcp_egress.sh          # Per-MCP IAP egress IAM binding script
+    └── register_gemini_enterprise.sh      # Gemini Enterprise app registration script
 ```
 
 ---
@@ -256,6 +258,9 @@ This project supports **two parallel front-end options (Coexistence)** sharing t
 For the step-by-step deployment and validation guide, see **[GCP Deployment Guide (docs/GCP_DEPLOYMENT_GUIDE.ko.md)](docs/GCP_DEPLOYMENT_GUIDE.ko.md)**.
 
 ```bash
+# 0. Preflight Environment & Prerequisite Check
+./scripts/preflight_check.sh
+
 export PROJECT_ID="<your-project-id>"
 export REGION="us-central1"
 
