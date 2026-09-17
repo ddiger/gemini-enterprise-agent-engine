@@ -94,6 +94,8 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
     try:
         stream_fn = _reasoning_engines._wrap_stream_query_operation("stream_query", "")
         start_time = time.time()
+        active_tool_calls = {}
+        tool_call_seq = 0
         
         for chunk in stream_fn(agent, message=message, user_id=user_id):
             if isinstance(chunk, dict):
@@ -104,9 +106,13 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
                     if "function_call" in part:
                         fc = part["function_call"]
                         tool_name = fc.get("name", "unknown_tool")
+                        tool_call_seq += 1
+                        call_id = fc.get("id") or f"call_{tool_name}_{tool_call_seq}"
                         tool_args = fc.get("args", {})
+                        active_tool_calls[call_id] = {"tool": tool_name, "args": tool_args}
                         call_event = {
                             "type": "tool_call",
+                            "call_id": call_id,
                             "tool": tool_name,
                             "args": tool_args,
                             "timestamp": time.time(),
@@ -116,6 +122,20 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
                     elif "function_response" in part:
                         fr = part["function_response"]
                         tool_name = fr.get("name", "unknown_tool")
+                        call_id = fr.get("id")
+                        active_call = active_tool_calls.get(call_id)
+                        if not active_call:
+                            for cid, cinfo in list(active_tool_calls.items()):
+                                if cinfo["tool"] == tool_name:
+                                    call_id = cid
+                                    active_call = cinfo
+                                    del active_tool_calls[cid]
+                                    break
+                        if not call_id:
+                            tool_call_seq += 1
+                            call_id = f"call_{tool_name}_{tool_call_seq}"
+
+                        active_args = active_call.get("args", {}) if active_call else {}
                         response_data = fr.get("response", {})
                         resp_str = json.dumps(response_data)
                         
@@ -131,36 +151,50 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
                         if isinstance(response_data, dict):
                             if response_data.get("isError") is True:
                                 is_error = True
-                            elif "error" in response_data:
+                            elif response_data.get("error"):
                                 is_error = True
                         elif isinstance(response_data, str):
                             lower_resp = response_data.lower()
-                            if any(k in lower_resp for k in ["connection lost", "taskgroup", "forbidden", "denied", "blocked"]):
+                            if any(k in lower_resp for k in ["connection lost", "taskgroup", "forbidden", "denied", "blocked", "error"]):
                                 is_error = True
 
                         # Strict check: If FastMCP explicitly marked isError as false, it is 100% successful
                         if isinstance(response_data, dict) and response_data.get("isError") is False:
                             is_error = False
 
+                        is_write_tool = "send_email" in tool_name
                         has_403 = False
                         has_799 = False
                         has_generic_err = False
                         
                         if is_error:
                             lower_err = resp_str.lower()
-                            if any(k in lower_err for k in ["799", "model armor", "modelarmor", "jailbreak", "prompt injection", "harmful"]):
+                            args_str = json.dumps(active_args).lower()
+
+                            # 1. Model Armor HTTP 799 Check: Inbound prompt injection or tool argument attack
+                            is_injection_attack = any(k in lower_err or k in args_str for k in [
+                                "799", "model armor", "modelarmor", "jailbreak", "system override", "ignore all constraints", "admin password"
+                            ])
+                            
+                            if is_injection_attack:
                                 has_799 = True
-                            elif any(k in lower_err for k in ["403", "forbidden", "denied", "permission", "policy", "connection lost", "taskgroup", "restricted"]) or "send_email" in tool_name:
+                            elif is_write_tool and any(k in lower_err for k in ["403", "forbidden", "denied", "permission", "policy", "readonlytoolsonly", "restricted", "connection lost", "taskgroup"]):
+                                # Only write tools can be blocked by IAP ReadOnlyToolsOnly CEL policy
+                                has_403 = True
+                            elif is_write_tool:
                                 has_403 = True
                             else:
+                                # Read tools (get_document, search_documents, verify_applicant) are never CEL write-blocked
                                 has_generic_err = True
                         
                         resp_event = {
                             "type": "tool_response",
+                            "call_id": call_id,
                             "tool": tool_name,
                             "has_dlp_mask": has_dlp_mask,
                             "has_403": has_403,
                             "has_799": has_799,
+                            "has_generic_err": has_generic_err,
                             "summary": resp_str[:280] + ("..." if len(resp_str) > 280 else ""),
                             "timestamp": time.time(),
                         }
@@ -199,7 +233,7 @@ async def stream_reasoning_engine(message: str, user_id: str) -> AsyncGenerator[
                                 "type": "security_alert",
                                 "severity": "warning",
                                 "title": "Tool Execution Warning",
-                                "detail": f"도구({tool_name}) 실행 중 오류가 발생했습니다: {resp_str[:120]}",
+                                "detail": f"도구({tool_name}) 실행 중 일시적인 응답 지연/경고가 감지되었습니다: {resp_str[:120]}",
                             }
                             yield f"data: {json.dumps(sec_event)}\n\n"
 
@@ -1314,45 +1348,69 @@ api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''</pre>
                   { text: "L7 CALL", cls: "bg-blue-100 text-blue-800 border border-blue-200" }
                 );
 
+                const callId = event.call_id || event.tool;
+                const tagId = `${msgId}-tool-${callId}`;
                 const toolTag = document.createElement('span');
-                toolTag.id = `tool-tag-${event.tool}`;
+                toolTag.id = tagId;
                 toolTag.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 animate-pulse";
-                toolTag.innerHTML = `<i class="fa-solid fa-wrench text-[10px]"></i> ${event.tool}`;
+
+                let argDetail = "";
+                if (event.args) {
+                  if (event.args.document_id) argDetail = ` (${event.args.document_id})`;
+                  else if (event.args.first_name) argDetail = ` (${event.args.first_name})`;
+                  else if (event.args.applicant_last_name) argDetail = ` (${event.args.applicant_last_name})`;
+                }
+                const displayLabel = `${event.tool}${argDetail}`;
+                toolTag.dataset.label = displayLabel;
+                toolTag.innerHTML = `<i class="fa-solid fa-wrench text-[10px]"></i> ${displayLabel}`;
                 toolsEl.appendChild(toolTag);
 
               } else if (event.type === "tool_response") {
-                const toolTag = document.getElementById(`tool-tag-${event.tool}`);
+                const callId = event.call_id || event.tool;
+                const tagId = `${msgId}-tool-${callId}`;
+                const toolTag = document.getElementById(tagId);
+                const baseLabel = toolTag ? (toolTag.dataset.label || event.tool) : event.tool;
                 if (toolTag) {
                   toolTag.classList.remove("animate-pulse");
                   if (event.has_799) {
                     toolTag.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-300";
-                    toolTag.innerHTML = `<i class="fa-solid fa-shield-cat text-purple-600"></i> ${event.tool} (HTTP 799 Blocked)`;
+                    toolTag.innerHTML = `<i class="fa-solid fa-shield-cat text-purple-600"></i> ${baseLabel} (HTTP 799 Blocked)`;
                   } else if (event.has_403) {
                     toolTag.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-300";
-                    toolTag.innerHTML = `<i class="fa-solid fa-ban text-rose-600"></i> ${event.tool} (403 Blocked)`;
+                    toolTag.innerHTML = `<i class="fa-solid fa-ban text-rose-600"></i> ${baseLabel} (403 Blocked)`;
+                  } else if (event.has_generic_err) {
+                    toolTag.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-300";
+                    toolTag.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-600"></i> ${baseLabel} (Warning)`;
                   } else {
                     toolTag.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200";
-                    toolTag.innerHTML = `<i class="fa-solid fa-check text-emerald-600"></i> ${event.tool} (200 OK)`;
+                    toolTag.innerHTML = `<i class="fa-solid fa-check text-emerald-600"></i> ${baseLabel} (200 OK)`;
                   }
                 }
 
                 if (event.has_799) {
                   appendTimelineEvent(
                     `Model Armor Inbound 799 Blocked`,
-                    `Tool [${event.tool}] argument blocked by Model Armor (agw-request-template) for prompt injection pattern.`,
+                    `Tool [${baseLabel}] argument blocked by Model Armor (agw-request-template) for prompt injection pattern.`,
                     "modelarmor",
                     { text: "HTTP 799", cls: "bg-purple-100 text-purple-800 border border-purple-200" }
                   );
                 } else if (event.has_403) {
                   appendTimelineEvent(
                     `Agent Gateway 403 Forbidden`,
-                    `Tool [${event.tool}] denied by IAP RequestAuthz (ReadOnlyToolsOnly policy).`,
+                    `Tool [${baseLabel}] denied by IAP RequestAuthz (ReadOnlyToolsOnly policy).`,
                     "blocked",
                     { text: "CEL BLOCKED", cls: "bg-rose-100 text-rose-800 border border-rose-200" }
                   );
+                } else if (event.has_generic_err) {
+                  appendTimelineEvent(
+                    `Tool Execution Warning`,
+                    `Tool [${baseLabel}] warning: ${event.summary}`,
+                    "warning",
+                    { text: "WARNING", cls: "bg-amber-100 text-amber-800 border border-amber-200" }
+                  );
                 } else {
                   appendTimelineEvent(
-                    `Tool Ingress: ${event.tool}`,
+                    `Tool Ingress: ${baseLabel}`,
                     event.summary,
                     event.has_dlp_mask ? "dlp" : "info",
                     event.has_dlp_mask ? { text: "DLP MASKED", cls: "bg-emerald-100 text-emerald-800 border border-emerald-200" } : { text: "200 OK", cls: "bg-slate-100 text-slate-800 border border-slate-200" }
@@ -1377,6 +1435,10 @@ api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''</pre>
                       boxCls = "bg-purple-50/80 border-purple-200 text-purple-900";
                       iconCls = "bg-purple-100 text-purple-600";
                       iconTag = "fa-shield-cat";
+                    } else if (event.severity === "warning") {
+                      boxCls = "bg-amber-50/80 border-amber-200 text-amber-900";
+                      iconCls = "bg-amber-100 text-amber-600";
+                      iconTag = "fa-triangle-exclamation";
                     }
 
                     alertBox.className = `p-4 rounded-xl border flex items-start space-x-3 text-xs shadow-2xs ${boxCls}`;

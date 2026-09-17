@@ -16,6 +16,7 @@
 
 import logging
 import os
+import threading
 from typing import Any
 from urllib.parse import urlparse
 
@@ -193,6 +194,8 @@ def _build_impersonation_factory(target_url: str, target_sa_email: str):
         )
         raise
 
+    _token_lock = threading.Lock()
+
     class _ImpersonatedIDTokenAuth(httpx.Auth):
         """Per-request httpx auth that refreshes the OIDC token on demand."""
 
@@ -205,8 +208,10 @@ def _build_impersonation_factory(target_url: str, target_sa_email: str):
 
         def auth_flow(self, request):
             try:
-                if not self._creds.valid:
-                    self._creds.refresh(self._req)
+                with _token_lock:
+                    if not self._creds.valid:
+                        self._creds.refresh(self._req)
+                request.headers["Authorization"] = f"Bearer {self._creds.token}"
             except Exception:
                 # ADK wraps this in a TaskGroup and prints only the wrapper's
                 # str(); log the real exception here so it survives.
@@ -217,7 +222,6 @@ def _build_impersonation_factory(target_url: str, target_sa_email: str):
                     target_sa_email,
                 )
                 raise
-            request.headers["Authorization"] = f"Bearer {self._creds.token}"
             yield request
 
     auth_handler = _ImpersonatedIDTokenAuth(id_token_creds, target_url)
