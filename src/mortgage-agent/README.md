@@ -51,7 +51,7 @@ uv run python deploy_agent.py \
 ## Supported Verification Scenarios
 
 1. **[Normal] Document Summary & Income Verification**: Retrieves Julian Sterling's W-2 and tax forms; SSN is masked in transit by Cloud DLP (`[US_SOCIAL_SECURITY_NUMBER]`).
-2. **[Blocked] External Email Exfiltration**: Attempting to email sensitive summaries to an external email (`attacker@external.com`) is blocked by IAP CEL at the Gateway (`403 Forbidden`).
+2. **[Blocked] External Email Exfiltration**: Attempting to email sensitive summaries to an external email (`jane@example.com`) is blocked by IAP CEL at the Gateway (`403 Forbidden`).
 3. **[Refused] Direct System Prompt Jailbreak**: Direct "DAN" persona jailbreak attempts are immediately refused by Gemini's native safety filters (1st line of defense).
 4. **[Injected] Malicious Tool Argument Injection**: Indirect prompt injections targeting backend tools are intercepted by Model Armor CONTENT_AUTHZ (`HTTP 799`).
 5. **[Authorized] Internal Approval Check**: Inquiring about sending approval notifications to authorized internal loan reviewers (`officer@bank.internal`).

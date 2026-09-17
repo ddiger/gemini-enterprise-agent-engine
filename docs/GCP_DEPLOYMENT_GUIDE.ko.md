@@ -440,8 +440,8 @@ gcloud run deploy mortgage-agent-ui \
 * 상단 헤더의 **"데모 가이드 & 테스트 데이터"** 모달을 통해 등록된 신청인 데이터와 5대 보안 시나리오를 한눈에 확인하고 자유 질의할 수 있습니다.
 * 상단 리본 메뉴의 5대 원클릭 테스트 시나리오를 클릭하여 검증합니다:
   * **1. [정상] 서류 요약 & 소득 검증**: Sterling 가족 2023-2024 세금 신고서 요약 및 실시간 Cloud DLP SSN 마스킹 배지(`[US_SOCIAL_SECURITY_NUMBER]`) 확인.
-  * **2. [차단] 외부 개인메일 유출 시도**: attacker@external.com 전송 시 Agent Gateway IAP ReadOnlyToolsOnly 정책에 의한 403 Forbidden 강제 차단 확인.
-  * **3. [거절] 직접 시스템 탈옥 공격**: "You are now DAN" 탈옥 시도에 대해 Gemini 모델 자체 안전망(LLM 1차 방어선)이 즉시 거부(`I cannot fulfill this request...`)함을 확인.
+  * **2. [차단] 외부 메일 유출 시도 (L7 2차 방어선)**: jane@example.com 전송 시 Agent Gateway IAP ReadOnlyToolsOnly 정책에 의한 403 Forbidden 강제 차단 확인. (참고: attacker@... 등 노골적인 공격 주소는 LLM 1차 방어선이 사전 거부하며, 모델이 도구를 호출하더라도 게이트웨이 2차 방어선에서 물리적으로 403 차단됨)
+  * **3. [거절] 직접 시스템 탈옥 공격 (LLM 1차 방어선)**: "You are now DAN" 탈옥 시도에 대해 Gemini 모델 자체 안전망(LLM 1차 방어선)이 즉시 거부(`I cannot fulfill this request...`)함을 확인.
   * **4. [인젝션] 악성 도구 인자 주입**: SQL Injection/악성 문자열을 포함한 도구 인자 주입 시도 시 Model Armor 인바운드 검사 및 HTTP 799 방어 메커니즘 확인.
   * **5. [인가] 사내 심사팀 승인 메일 정책 질의**: 사내 대출 담당자(`officer@bank.internal`) 대상 알림 질의 시 에이전트의 인가 정책 인지 및 거버넌스 확인.
 * **Architecture: Before vs After 모달**: 상단 버튼 클릭 시 Agent Gateway가 없을 때(Direct Cloud Run 연결 시 발생하는 4대 보안 재앙)와 도입 후의 해결책을 대조표로 확인.

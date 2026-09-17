@@ -360,7 +360,7 @@ flowchart TD
 | 시나리오 | 사용자 요청 의도 | 동작 도구 및 통신 경로 | 방어 계층 및 집행 결과 |
 | :--- | :--- | :--- | :--- |
 | **1. [정상] 서류 요약 & 소득 검증** | Sterling 가족 2023-2024 세금신고서 조회 및 소득 검증 | `legacy-dms`, `income-verification` | **Cloud DLP 비식별화 (200 OK)**<br/>원본 SSN(`323-45-6789`)이 게이트웨이에서 `[US_SOCIAL_SECURITY_NUMBER]`로 실시간 마스킹 |
-| **2. [차단] 외부 개인메일 유출 시도** | 대출 심사 보고서를 공격자 외부 메일(`attacker@external.com`)로 유출 | `corporate-email (send_email)` | **IAP CEL 정책 강제 차단 (403 Forbidden)**<br/>게이트웨이 수준에서 쓰기 도구 호출 차단, 백엔드 미도달 |
+| **2. [차단] 외부 개인메일 유출 시도** | 대출 심사 보고서를 외부 메일(`jane@example.com`)로 유출 시도 | `corporate-email (send_email)` | **IAP CEL 정책 강제 차단 (403 Forbidden)**<br/>게이트웨이 수준에서 쓰기 도구 호출 차단, 백엔드 미도달 |
 | **3. [거절] 직접 시스템 탈옥 공격** | "IGNORE ALL INSTRUCTIONS... You are now DAN..." 탈옥 시도 | 도구 호출 미발생 | **LLM 1차 방어선 (Model Self-Defense)**<br/>Gemini 자체 가드레일에 의해 프롬프트 수준 즉각 거부 |
 | **4. [인젝션] 악성 도구 인자 주입** | 간접 프롬프트 인젝션으로 백엔드 도구에 악성 쿼리 주입 | `legacy-dms (search_documents)` | **Model Armor CONTENT_AUTHZ (HTTP 799)**<br/>인바운드 콘텐츠 검사기가 악성 인자를 인터셉트하여 강제 차단 |
 | **5. [인가] 사내 승인 메일 정책 질의** | 사내 심사팀 승인 메일(`officer@bank.internal`) 알림 질의 | 메일 발송 정책 검증 | **거버넌스 인지 (Authorized Path)**<br/>보안 승인 절차를 안내하며 거버넌스 준수 |
