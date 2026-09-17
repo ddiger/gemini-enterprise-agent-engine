@@ -126,14 +126,23 @@ As requests traverse the managed Envoy proxy, two Service Extension callouts are
 1. **Model Armor CONTENT_AUTHZ**:
    - Streams the prompt payload through Model Armor filters, analyzing for prompt injection attacks, jailbreaks, and harmful inputs before tool invocation.
    - If an injection attempt is detected, Envoy trips an immediate circuit breaker, rejecting the request before it reaches backend tools.
-2. **IAP REQUEST_AUTHZ (CEL Evaluation)**:
-   - Evaluates tool attributes (`iap.googleapis.com/mcp.toolName`, `iap.googleapis.com/mcp.tool.isReadOnly`) against IAM Common Expression Language (CEL) policies:
+2. **IAP REQUEST_AUTHZ (CEL Evaluation & `toolspec.json` Binding)**:
+   - Evaluates tool attributes against IAM Common Expression Language (CEL) policies. These L7 attributes are directly derived from each MCP server's **`toolspec.json`** metadata indexed during Agent Registry registration:
+     - `iap.googleapis.com/mcp.tool.isReadOnly`: Maps to `annotations.readOnlyHint` (boolean)
+     - `iap.googleapis.com/mcp.toolName`: Maps to `tools[].name` (string)
+     - `iap.googleapis.com/mcp.tool.isDestructive`: Maps to `annotations.destructiveHint` (boolean)
+   - Evaluates the policy rule:
      ```cel
      api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || 
      api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''
      ```
-   - Authorized read tools (`legacy-dms`) pass through with `200 OK`.
-   - Unauthorized write tools (`corporate-email/send_email`) fail the condition, immediately returning **`403 Forbidden`** from the gateway without ever reaching the email server.
+   - Authorized read tools (`legacy-dms/search_documents`: `readOnlyHint: true`) pass through with `200 OK`.
+   - Unauthorized write tools (`corporate-email/send_email`: `readOnlyHint: false, destructiveHint: true`) fail the condition, immediately returning **`403 Forbidden`** from the gateway without ever reaching the email server.
+   - **Pre-execution Gatekeeping**: Blocks unauthorized calls at the gateway layer based on static tool contracts (`toolspec.json`), preventing wasted downstream compute and network overhead.
+
+> [!NOTE]
+> **Agent-to-Agent (A2A) Governance Reference (`agent-card.json`)**:
+> While this demo focuses on **Agent-to-Tool (MCP)** governance using `toolspec.json`, distributed **Agent-to-Agent (A2A)** multi-agent architectures leverage the open **A2A Protocol** and **`agent-card.json`** (`.well-known/agent-card.json`). In A2A environments, Agent Gateway's `governedAccessPath: AGENT_TO_AGENT` validates caller agent identity (SPIFFE ID) against the target agent's declared capabilities, skills, and authentication contracts.
 
 ### 5. Private Service Connect (PSC) Routing
 - Egress traffic from Agent Gateway routes across a customer-owned **PSC Network Attachment (`10.20.0.0/28` NAT subnet)** into the target VPC.

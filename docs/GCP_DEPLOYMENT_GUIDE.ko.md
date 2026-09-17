@@ -244,8 +244,27 @@ export AGENT_ID="<출력된-숫자-ID>"
 ### 2) 쓰기 도구(`corporate-email`)에 대해 Read-Only CEL 조건식 부여
 이메일 발송(`send_email`)은 쓰기 도구이므로 일반 에이전트의 호출을 차단하도록 조건식을 겁니다:
 ```bash
-./scripts/grant_agent_mcp_egress.sh   --mcp   --agent-id ${AGENT_ID}   --mcp-filter "corporate-email"   --condition-expression "api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''"   --condition-title "ReadOnlyToolsOnly"   --condition-description "Restrict ${AGENT_ID} to read-only tools on corporate-email"
+./scripts/grant_agent_mcp_egress.sh \
+  --mcp \
+  --agent-id ${AGENT_ID} \
+  --mcp-filter "corporate-email" \
+  --condition-expression "api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''" \
+  --condition-title "ReadOnlyToolsOnly" \
+  --condition-description "Restrict ${AGENT_ID} to read-only tools on corporate-email"
 ```
+
+> [!TIP]
+> **💡 IAP CEL 조건식과 `toolspec.json` 연동 원리**:
+> Agent Gateway는 Agent Registry에 업로드된 각 MCP 서버의 **`toolspec.json`** 메타데이터를 기반으로 L7 속성(Attributes)을 추출하여 평가합니다:
+> - `api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly')`: `toolspec.json` 내 `annotations.readOnlyHint` (불리언)
+> - `api.getAttribute('iap.googleapis.com/mcp.toolName')`: `toolspec.json` 내 `tools[].name` (문자열)
+> - `api.getAttribute('iap.googleapis.com/mcp.tool.isDestructive')`: `toolspec.json` 내 `annotations.destructiveHint` (불리언)
+>
+> `legacy-dms` 및 `income-verification`의 도구들(`search_documents`, `get_applicant_income`)은 `readOnlyHint: true`이므로 통과하지만, `corporate-email`의 `send_email` 도구는 `readOnlyHint: false, destructiveHint: true`이므로 백엔드 서버에 도달하기 전 게이트웨이 레벨에서 즉각 `403 Forbidden` 차단됩니다.
+
+> [!NOTE]
+> **에이전트 간 제어 참고 (A2A Protocol & `agent-card.json`)**:
+> 본 데모는 **에이전트 ↔ 도구(MCP)** 제어에 초점을 맞추고 있으나, 복수의 에이전트 간 통제(**A2A: Agent-to-Agent**)가 필요할 때는 오픈 표준인 **A2A Protocol**과 **`agent-card.json`** (`.well-known/agent-card.json`)을 사용합니다. Agent Gateway는 `AGENT_TO_AGENT` 경로를 통해 호출자 에이전트의 SPIFFE ID와 대상 에이전트 카드의 기능(Skills)/인증 요건을 대조하여 에이전트 간 인가를 집행합니다.
 
 ### 3) IAP 정책 Enforcement 모드를 활성화 (DRY_RUN -> 강제 차단)
 초기 `terraform.tfvars`의 `DRY_RUN` 모드를 해제하여 실제 차단이 동작하도록 업데이트합니다:

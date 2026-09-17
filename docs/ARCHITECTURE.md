@@ -156,9 +156,20 @@ flowchart LR
 #### A. IAM Unified Access Policies (UAP) / Access Policies
 * **역할**: 에이전트 주체(`Agent Principal`)와 대상 리소스(`Destination Resource`: 대상 Agent, MCP 서버, 외부 Endpoint) 간의 접근을 통제하는 L7 인가 정책.
 * **집행 주체**: Agent Gateway 내부의 IAP(Identity-Aware Proxy) v2 엔진.
-* **정책 규칙 구조**:
-  - `Allow Rules`: 특정 Agent Identity가 지정된 MCP 도구 또는 엔드포인트 URL 패턴으로 통신하는 것을 명시적 허용.
-  - `Deny Rules`: 위험성이 높은 도구 호출이나 미승인 엔드포인트 접근을 우선 차단.
+* **`toolspec.json` L7 속성 바인딩 원리**:
+  Agent Gateway의 관리형 Envoy 프록시는 Agent Registry에 등록된 각 MCP 서버의 **`toolspec.json`** 메타데이터를 캐싱하여 L7 인가 엔진에 전달합니다:
+  - `api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly')`: `toolspec.json`의 `annotations.readOnlyHint` (boolean)
+  - `api.getAttribute('iap.googleapis.com/mcp.toolName')`: `toolspec.json`의 `tools[].name` (string)
+  - `api.getAttribute('iap.googleapis.com/mcp.tool.isDestructive')`: `toolspec.json`의 `annotations.destructiveHint` (boolean)
+* **정책 규칙 구조 (Common Expression Language)**:
+  - **Read-Only 허용 규칙 예시**:
+    ```cel
+    api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || 
+    api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''
+    ```
+  - `search_documents` (읽기 도구: `readOnlyHint: true`) ➔ **200 OK 승인**
+  - `send_email` (쓰기/파괴 도구: `readOnlyHint: false, destructiveHint: true`) ➔ **403 Forbidden 즉시 차단**
+  - **사전 게이트키핑(Pre-Execution Gatekeeping)**: 백엔드 MCP 컨테이너에 요청이 도달하기 전에 정적 스펙을 기준으로 게이트웨이에서 선제 차단하므로 불필요한 백엔드 연산 및 데이터 유출을 완벽히 차단합니다.
 
 #### B. Semantic Governance Policies (SGP - 의미론적 거버넌스)
 * **역할**: 자연어 및 컨텍스트 레벨에서 에이전트의 도구 호출 의도를 검증하는 혁신적 거버넌스 계층.
@@ -172,6 +183,35 @@ flowchart LR
   1. **Prompt Injection & Jailbreak 방어**: 사용자 입력 또는 서드파티 MCP 도구의 리턴 데이터에 숨겨진 프롬프트 탈옥 공격 탐지.
   2. **DLP & 데이터 유출 방지**: 주민번호, 신용카드, API 키 등 민감 데이터(PII/Secrets)가 도구 호출 파라미터나 모델 응답에 포함될 경우 실시간 마스킹 또는 차단.
   3. **Circuit Breaker (비상 차단기)**: 이상 징후 발생 시 에이전트 인스턴스의 실행을 강제 중단하여 통제 불능(Rogue Agent) 상태 방지.
+
+---
+
+### 3.5. 도구 거버넌스(Agent-to-MCP) vs 에이전트 간 거버넌스(Agent-to-Agent / A2A)
+
+본 레퍼런스 아키텍처는 **에이전트 ↔ 도구(MCP)** 간 통제에 초점을 맞추어 구성되어 있으나, 엔터프라이즈 멀티 에이전트 환경에서는 **에이전트 ↔ 에이전트(A2A)** 통제 체계로 확장할 수 있습니다.
+
+```mermaid
+flowchart TD
+    subgraph AgentToMCP["1. 도구 호출 거버넌스 (Agent-to-MCP)"]
+        A1["Reasoning Engine / Agent"] -->|MCP Tool Call| GW1["Agent Gateway<br/>(governedAccessPath: AGENT_TO_ANYWHERE)"]
+        GW1 -->|L7 CEL vs toolspec.json| T1["Legacy DMS / Income API"]
+    end
+
+    subgraph AgentToAgent["2. 에이전트 간 협업 거버넌스 (Agent-to-Agent / A2A)"]
+        A2["Master Orchestrator Agent"] -->|A2A Task Delegation| GW2["Agent Gateway<br/>(governedAccessPath: AGENT_TO_AGENT)"]
+        GW2 -->|SPIFFE ID + agent-card.json 검증| S2["Fraud Risk Specialist Agent"]
+    end
+```
+
+| 비교 항목 | **도구 거버넌스 (Agent-to-MCP)** | **에이전트 간 거버넌스 (Agent-to-Agent / A2A)** |
+|---|---|---|
+| **통신 상대** | 에이전트 ➔ **단순 도구 / DB / 백엔드 API** | 에이전트 ➔ **다른 자율 AI 에이전트** |
+| **상호작용 성격** | 단발성 RPC 함수 호출 (Request-Response) | 다중 턴 협업, 자율 추론 위임, 상태/이벤트 스트리밍 |
+| **스펙/계약서** | **`toolspec.json`** (Open MCP tools/list 기반) | **`agent-card.json`** (`.well-known/agent-card.json`) |
+| **스펙 주요 내용** | 도구명, 파라미터 스키마, `readOnlyHint`, `destructiveHint` | 에이전트 페르소나, 전문 스킬(Skills), 입출력 스키마, 인증 요건 |
+| **Agent Gateway 경로** | `AGENT_TO_ANYWHERE` | `AGENT_TO_AGENT` |
+| **인가 검증 메커니즘** | IAP CEL: `iap.googleapis.com/mcp.tool.*` 속성 검사 | 호출자 SPIFFE ID / OIDC 자격증명 + 타깃 Agent Card 역량 대조 |
+| **적합한 유즈케이스** | 서류 검색, 급여 내역 조회, 이메일 발송 등 | 대출 심사 ↔ 사기 탐지(Fraud) ↔ 규제 컴플라이언스 에이전트 협업 |
 
 ---
 

@@ -128,15 +128,23 @@ Gemini Enterprise Agent Engine 환경에서 사용자의 단일 프롬프트가 
 1. **Model Armor CONTENT_AUTHZ (프롬프트 보안 검사)**:
    - 스트리밍 요청 바디를 가로채어 시스템 지침을 무력화하려는 프롬프트 인젝션(Prompt Injection), 탈옥(Jailbreak), 악성 URL 유입 여부를 실시간 검사합니다.
    - 위협 패턴이 감지되면 LLM 호출 및 백엔드 전송을 즉시 중단하고 회로 차단기(Circuit Breaker)를 발동합니다.
-2. **IAP REQUEST_AUTHZ (CEL 조건식 기반 세부 인가)**:
-   - Envoy가 호출 대상 MCP 서버의 메타데이터(`iap.googleapis.com/mcp.toolName`, `iap.googleapis.com/mcp.tool.isReadOnly`, 호출자 에이전트 SPIFFE ID)를 추출하여 IAP 인가 엔진에 전달합니다.
+2. **IAP REQUEST_AUTHZ (CEL 조건식 기반 세부 인가 & `toolspec.json` 연동)**:
+   - Envoy가 호출 대상 MCP 도구의 L7 속성을 IAP 인가 엔진에 전달합니다. 이때 속성값은 Terraform 배포 시 각 MCP 서버의 **`toolspec.json`** 스펙에서 Agent Registry로 인덱싱된 메타데이터를 직접 참조합니다:
+     - `iap.googleapis.com/mcp.tool.isReadOnly`: `toolspec.json`의 `annotations.readOnlyHint` (불리언)
+     - `iap.googleapis.com/mcp.toolName`: `toolspec.json`의 `tools[].name` (문자열)
+     - `iap.googleapis.com/mcp.tool.isDestructive`: `toolspec.json`의 `annotations.destructiveHint` (불리언)
    - IAM 정책에 등록된 **Common Expression Language(CEL) 조건식**을 평가합니다:
      ```cel
      api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true || 
      api.getAttribute('iap.googleapis.com/mcp.toolName', '') == ''
      ```
-   - `search_documents`(읽기 도구) -> 조건 만족 -> **`200 OK 승인`**
-   - `send_email`(쓰기 도구) -> 조건 불일치 -> **`403 Forbidden 차단`** (백엔드 서버로 패킷 전송 차단)
+   - `search_documents`(읽기 도구: `readOnlyHint: true`) -> 조건 만족 -> **`200 OK 승인`**
+   - `send_email`(쓰기 도구: `readOnlyHint: false, destructiveHint: true`) -> 조건 불일치 -> **`403 Forbidden 차단`** (백엔드 서버로 패킷 전송 차단)
+   - **사전 게이트키핑(Pre-Execution Gatekeeping)**: 백엔드 MCP 컨테이너에 도달하기 전 게이트웨이 레벨에서 정적 스펙(`toolspec.json`)을 대조하여 차단하므로 불필요한 네트워크/컴퓨팅 리소스 낭비가 없습니다.
+
+> [!NOTE]
+> **에이전트 간 제어 참고 (A2A Protocol & `agent-card.json`)**:
+> 본 데모는 **에이전트 ↔ 도구(MCP)** 제어에 초점을 맞추어 `toolspec.json`을 사용합니다. 반면, 복수의 AI 에이전트가 서로를 조율하고 협업하는 **에이전트 ↔ 에이전트(Multi-Agent / A2A)** 환경에서는 오픈 표준인 **A2A Protocol**과 **`agent-card.json`** (`.well-known/agent-card.json`) 규격이 동일한 역할을 수행합니다. Agent Gateway는 `AGENT_TO_AGENT` 경로를 통해 호출자 에이전트의 SPIFFE ID와 대상 에이전트 카드의 기능(Skills), 입출력 스키마, 보안 요건을 상호 검증하여 에이전트 간 제어 및 인가를 집행합니다.
 
 ### 5. Private Service Connect (PSC) 격리 전송
 - IAP 검증을 통과한 인가된 패킷은 Agent Gateway의 전용 **PSC Network Attachment (`10.20.0.0/28` NAT 서브넷)**를 통해 내부 VPC 네트워크로 포워딩됩니다.
