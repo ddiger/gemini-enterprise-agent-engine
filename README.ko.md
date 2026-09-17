@@ -8,6 +8,9 @@
 
 📖 **[Google Cloud 실환경 7단계 배포 및 테스트 상세 가이드 바로가기 (docs/GCP_DEPLOYMENT_GUIDE.ko.md)](docs/GCP_DEPLOYMENT_GUIDE.ko.md)**
 
+> [!NOTE]
+> **출처 및 레퍼런스 (Upstream Reference)**: 본 저장소는 Google Cloud 공식 코드랩인 [Governing agentic workloads with Agent Gateway on Gemini Enterprise Agent Platform](https://codelabs.developers.google.com/cloudnet-agent-gateway) ([GitHub 소스 저장소](https://github.com/GoogleCloudPlatform/cloud-networking-solutions/tree/main/demos/agent-gateway))를 기반으로 작성되었습니다.
+
 ---
 
 ## 🏛 아키텍처 토폴로지 (Architecture Topology)

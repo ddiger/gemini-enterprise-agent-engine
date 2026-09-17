@@ -8,6 +8,9 @@ This repository contains real-world deployment code (Terraform, Skaffold, Python
 
 📖 **[Read the Full Step-by-Step Google Cloud Deployment Guide (docs/GCP_DEPLOYMENT_GUIDE.ko.md)](docs/GCP_DEPLOYMENT_GUIDE.ko.md)**
 
+> [!NOTE]
+> **Upstream Reference**: This repository is built upon and inspired by the official Google Cloud Codelab: [Governing agentic workloads with Agent Gateway on Gemini Enterprise Agent Platform](https://codelabs.developers.google.com/cloudnet-agent-gateway) ([Source Repository](https://github.com/GoogleCloudPlatform/cloud-networking-solutions/tree/main/demos/agent-gateway)).
+
 ---
 
 ## 🏛 Architecture Topology

@@ -4,6 +4,9 @@
 
 본 문서는 **Google Cloud 실제 환경**에서 **Gemini Enterprise Agent Platform**의 4대 핵심 축인 **Agent Endpoint**, **Agent Gateway**, **Agent Identity**, **Agent Policy**를 배포하고, 단계별로 거버넌스 정책(IAP CEL 인가, Model Armor 인젝션 차단, Cloud DLP 마스킹)을 직접 테스트하는 완전한 실습 가이드입니다.
 
+> [!NOTE]
+> **출처 및 레퍼런스 (Upstream Reference)**: 본 배포 가이드 및 기본 아키텍처는 Google Cloud 공식 코드랩인 [Governing agentic workloads with Agent Gateway on Gemini Enterprise Agent Platform](https://codelabs.developers.google.com/cloudnet-agent-gateway) ([GitHub 소스 저장소](https://github.com/GoogleCloudPlatform/cloud-networking-solutions/tree/main/demos/agent-gateway))를 기반으로 작성되었습니다.
+
 ---
 
 ## 🏛 전체 아키텍처 개요
